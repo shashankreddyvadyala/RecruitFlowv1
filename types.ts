@@ -44,6 +44,11 @@ export interface Candidate {
   workMode?: 'Remote' | 'Hybrid' | 'On-site' | 'Any';
   salaryExpectation?: string;
   availability?: string; // e.g., "Immediate", "2 weeks notice"
+
+  // Resume Metadata
+  resumeName?: string;
+  resumeUrl?: string;
+  resumeUpdatedAt?: string;
 }
 
 export interface Job {
@@ -60,7 +65,7 @@ export interface Job {
 
 export interface Activity {
   id: string;
-  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange';
+  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload';
   subject: string;
   content: string;
   timestamp: string;

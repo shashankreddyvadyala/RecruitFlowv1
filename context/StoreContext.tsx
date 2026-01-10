@@ -29,6 +29,7 @@ interface StoreContextType {
   updateJobStatus: (id: string, status: Job['status']) => void;
   updateCandidateStatus: (id: string, status: string, stageId: string) => void;
   updateCandidateNotes: (id: string, notes: string) => void;
+  updateCandidateProfile: (id: string, updates: Partial<Candidate>) => void;
   addActivity: (activity: Activity) => void;
   sourceCandidatesForJob: (externalJobId: string) => Promise<void>;
   
@@ -53,7 +54,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   
   const [jobs, setJobs] = useState<Job[]>(Constants.MOCK_JOBS);
   const [candidates, setCandidates] = useState<Candidate[]>(Constants.MOCK_CANDIDATES);
-  // Defaulting to mock interviews with expanded type info
   const [interviews, setInterviews] = useState<Interview[]>(Constants.MOCK_INTERVIEWS.map(i => ({...i, type: 'Technical'})));
   const [externalJobs, setExternalJobs] = useState<ExternalJob[]>(Constants.MOCK_EXTERNAL_JOBS);
   const [talentProfiles, setTalentProfiles] = useState<CandidateProfile[]>(Constants.MOCK_TALENT_PROFILES);
@@ -65,7 +65,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const notify = (title: string, message: string, type: Notification['type'] = 'info') => {
     const id = `notif_${Date.now()}`;
     setNotifications(prev => [{ id, title, message, type, timestamp: new Date().toISOString() }, ...prev]);
-    // Auto-remove after 5 seconds
     setTimeout(() => removeNotification(id), 5000);
   };
 
@@ -98,11 +97,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     notify("Notes Saved", "Candidate records updated successfully.", "success");
   };
 
+  const updateCandidateProfile = (id: string, updates: Partial<Candidate>) => {
+    setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    const cand = candidates.find(c => c.id === id);
+    if (cand) {
+        const type = updates.resumeName ? 'ResumeUpload' : 'ProfileUpdate';
+        const subject = updates.resumeName ? 'New Resume Uploaded' : 'Profile Skills Updated';
+        const content = updates.resumeName 
+            ? `${cand.firstName} uploaded a new resume: ${updates.resumeName}`
+            : `${cand.firstName} updated their profile skills: ${updates.skills?.join(', ')}`;
+
+        addActivity({
+            id: `act_upd_${Date.now()}`,
+            type,
+            subject,
+            content,
+            timestamp: new Date().toISOString(),
+            author: `${cand.firstName} ${cand.lastName}`,
+            entityId: id
+        });
+
+        // Notify Recruiter
+        notify(
+            "Candidate Update", 
+            `${cand.firstName} ${cand.lastName} just updated their profile materials.`, 
+            "info"
+        );
+    }
+  };
+
   const addActivity = (activity: Activity) => setActivities(prev => [activity, ...prev]);
 
   const addInterview = (interview: Interview) => {
     setInterviews(prev => [...prev, interview]);
-    // Log activity automatically
     addActivity({
       id: `act_int_${Date.now()}`,
       type: 'Meeting',
@@ -112,8 +139,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       author: interview.interviewerName,
       entityId: interview.candidateId
     });
-    
-    // Simulate Alerting
     notify("Interview Scheduled", `Invite sent to ${interview.candidateName} and ${interview.interviewerName}.`, "success");
   };
 
@@ -175,6 +200,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updateJobStatus,
       updateCandidateStatus,
       updateCandidateNotes,
+      updateCandidateProfile,
       addActivity,
       sourceCandidatesForJob,
       addInterview,
