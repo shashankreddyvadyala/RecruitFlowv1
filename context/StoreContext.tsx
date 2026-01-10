@@ -1,16 +1,13 @@
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Job, Candidate, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, UserRole, AgencyBranding, Interview, Notification } from '../types';
 import * as Constants from '../constants';
 
 interface StoreContextType {
-  // Roles & Identity
   userRole: UserRole;
   branding: AgencyBranding;
   setUserRole: (role: UserRole) => void;
   updateBranding: (branding: Partial<AgencyBranding>) => void;
-
-  // Data
   jobs: Job[];
   candidates: Candidate[];
   interviews: Interview[];
@@ -20,8 +17,6 @@ interface StoreContextType {
   placements: Placement[];
   recruiterStats: RecruiterStats[];
   notifications: Notification[];
-
-  // Actions
   addJob: (job: Job) => void;
   addCandidate: (candidate: Candidate) => void;
   removeCandidate: (id: string) => void;
@@ -32,35 +27,62 @@ interface StoreContextType {
   updateCandidateProfile: (id: string, updates: Partial<Candidate>) => void;
   addActivity: (activity: Activity) => void;
   sourceCandidatesForJob: (externalJobId: string) => Promise<void>;
-  
-  // Interview Management
   addInterview: (interview: Interview) => void;
   updateInterviewStatus: (id: string, status: Interview['status']) => void;
-  
-  // Team Management
   addRecruiter: (recruiter: RecruiterStats) => void;
   removeRecruiter: (id: string) => void;
-
-  // Notification Management
   notify: (title: string, message: string, type?: Notification['type']) => void;
   removeNotification: (id: string) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'recruitflow_persistence_v1';
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [userRole, setUserRole] = useState<UserRole>(UserRole.Owner);
-  const [branding, setBranding] = useState<AgencyBranding>(Constants.INITIAL_BRANDING);
-  
-  const [jobs, setJobs] = useState<Job[]>(Constants.MOCK_JOBS);
-  const [candidates, setCandidates] = useState<Candidate[]>(Constants.MOCK_CANDIDATES);
-  const [interviews, setInterviews] = useState<Interview[]>(Constants.MOCK_INTERVIEWS.map(i => ({...i, type: 'Technical'})));
-  const [externalJobs, setExternalJobs] = useState<ExternalJob[]>(Constants.MOCK_EXTERNAL_JOBS);
-  const [talentProfiles, setTalentProfiles] = useState<CandidateProfile[]>(Constants.MOCK_TALENT_PROFILES);
-  const [activities, setActivities] = useState<Activity[]>(Constants.MOCK_ACTIVITIES);
-  const [placements, setPlacements] = useState<Placement[]>(Constants.MOCK_PLACEMENTS);
-  const [recruiterStats, setRecruiterStats] = useState<RecruiterStats[]>(Constants.MOCK_RECRUITER_STATS);
+  // Load initial state from LocalStorage or Constants
+  const getInitialData = () => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse persisted data", e);
+      }
+    }
+    return null;
+  };
+
+  const persisted = getInitialData();
+
+  const [userRole, setUserRole] = useState<UserRole>(persisted?.userRole || UserRole.Owner);
+  const [branding, setBranding] = useState<AgencyBranding>(persisted?.branding || Constants.INITIAL_BRANDING);
+  const [jobs, setJobs] = useState<Job[]>(persisted?.jobs || Constants.MOCK_JOBS);
+  const [candidates, setCandidates] = useState<Candidate[]>(persisted?.candidates || Constants.MOCK_CANDIDATES);
+  const [interviews, setInterviews] = useState<Interview[]>(persisted?.interviews || Constants.MOCK_INTERVIEWS);
+  const [externalJobs, setExternalJobs] = useState<ExternalJob[]>(persisted?.externalJobs || Constants.MOCK_EXTERNAL_JOBS);
+  const [talentProfiles, setTalentProfiles] = useState<CandidateProfile[]>(persisted?.talentProfiles || Constants.MOCK_TALENT_PROFILES);
+  const [activities, setActivities] = useState<Activity[]>(persisted?.activities || Constants.MOCK_ACTIVITIES);
+  const [placements, setPlacements] = useState<Placement[]>(persisted?.placements || Constants.MOCK_PLACEMENTS);
+  const [recruiterStats, setRecruiterStats] = useState<RecruiterStats[]>(persisted?.recruiterStats || Constants.MOCK_RECRUITER_STATS);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // Persistence side-effect: Save state whenever it changes
+  useEffect(() => {
+    const dataToSave = {
+      userRole,
+      branding,
+      jobs,
+      candidates,
+      interviews,
+      externalJobs,
+      talentProfiles,
+      activities,
+      placements,
+      recruiterStats
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+  }, [userRole, branding, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats]);
 
   const notify = (title: string, message: string, type: Notification['type'] = 'info') => {
     const id = `notif_${Date.now()}`;
@@ -88,41 +110,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addActivity({
       id: `act_note_${Date.now()}`,
       type: 'Note',
-      subject: 'Candidate Notes Updated',
-      content: 'Manual internal notes updated for this candidate.',
+      subject: 'Intelligence Synced',
+      content: 'Classified notes updated for candidate dossier.',
       timestamp: new Date().toISOString(),
-      author: 'Current User',
+      author: 'System Admin',
       entityId: id
     });
-    notify("Notes Saved", "Candidate records updated successfully.", "success");
   };
 
   const updateCandidateProfile = (id: string, updates: Partial<Candidate>) => {
     setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     const cand = candidates.find(c => c.id === id);
     if (cand) {
-        const type = updates.resumeName ? 'ResumeUpload' : 'ProfileUpdate';
-        const subject = updates.resumeName ? 'New Resume Uploaded' : 'Profile Skills Updated';
-        const content = updates.resumeName 
-            ? `${cand.firstName} uploaded a new resume: ${updates.resumeName}`
-            : `${cand.firstName} updated their profile skills: ${updates.skills?.join(', ')}`;
-
         addActivity({
             id: `act_upd_${Date.now()}`,
-            type,
-            subject,
-            content,
+            type: updates.resumeName ? 'ResumeUpload' : 'ProfileUpdate',
+            subject: updates.resumeName ? 'Dossier Artifact Uploaded' : 'Profile Synchronized',
+            content: updates.resumeName ? `New resume uploaded: ${updates.resumeName}` : `Skills updated by candidate.`,
             timestamp: new Date().toISOString(),
             author: `${cand.firstName} ${cand.lastName}`,
             entityId: id
         });
-
-        // Notify Recruiter
-        notify(
-            "Candidate Update", 
-            `${cand.firstName} ${cand.lastName} just updated their profile materials.`, 
-            "info"
-        );
     }
   };
 
@@ -133,21 +141,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addActivity({
       id: `act_int_${Date.now()}`,
       type: 'Meeting',
-      subject: 'Interview Scheduled',
-      content: `${interview.interviewerName} scheduled a ${interview.type} interview with ${interview.candidateName} for ${interview.jobTitle}.`,
+      subject: 'Temporal Sync Locked',
+      content: `${interview.type} session scheduled for ${interview.candidateName}.`,
       timestamp: new Date().toISOString(),
-      author: interview.interviewerName,
+      author: 'Scheduling Agent',
       entityId: interview.candidateId
     });
-    notify("Interview Scheduled", `Invite sent to ${interview.candidateName} and ${interview.interviewerName}.`, "success");
   };
 
   const updateInterviewStatus = (id: string, status: Interview['status']) => {
     setInterviews(prev => prev.map(i => i.id === id ? { ...i, status } : i));
-    const int = interviews.find(i => i.id === id);
-    if (int) {
-      notify("Status Updated", `Interview for ${int.candidateName} is now marked as ${status}.`, "info");
-    }
   };
 
   const addRecruiter = (recruiter: RecruiterStats) => setRecruiterStats(prev => [recruiter, ...prev]);
@@ -157,17 +160,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const exJob = externalJobs.find(j => j.id === externalJobId);
     if (!exJob) return;
 
-    const newCandidates: Candidate[] = Array.from({ length: 3 }).map((_, i) => ({
+    const newCandidates: Candidate[] = Array.from({ length: 2 }).map((_, i) => ({
         id: `sourced_${Date.now()}_${i}`,
-        firstName: ['Alex', 'Jordan', 'Taylor'][i],
-        lastName: ['Smith', 'Doe', 'Lee'][i],
+        firstName: ['Alex', 'Jordan'][i],
+        lastName: ['Smith', 'Doe'][i],
         email: `candidate.${Date.now()}.${i}@example.com`,
         role: exJob.title,
         status: 'New',
         stageId: 's1',
-        matchScore: 75 + Math.floor(Math.random() * 20),
+        matchScore: 80 + Math.floor(Math.random() * 15),
         skills: ['Sourced via AI', exJob.title.split(' ')[0]],
-        lastActivity: 'Just sourced',
+        lastActivity: 'Just discovered',
         avatarUrl: `https://picsum.photos/100/100?random=${Date.now() + i}`
     }));
 
@@ -175,40 +178,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await new Promise(r => setTimeout(r, 500));
         addCandidate(c);
     }
-    notify("Sourcing Complete", `Found 3 new candidates for ${exJob.title}.`, "success");
+    notify("Search Protocol Success", `Identified ${newCandidates.length} high-resonance targets.`, "success");
   };
 
   return (
     <StoreContext.Provider value={{
-      userRole,
-      branding,
-      setUserRole,
-      updateBranding,
-      jobs,
-      candidates,
-      interviews,
-      externalJobs,
-      talentProfiles,
-      activities,
-      placements,
-      recruiterStats,
-      notifications,
-      addJob,
-      addCandidate,
-      removeCandidate,
-      addTalentProfile,
-      updateJobStatus,
-      updateCandidateStatus,
-      updateCandidateNotes,
-      updateCandidateProfile,
-      addActivity,
-      sourceCandidatesForJob,
-      addInterview,
-      updateInterviewStatus,
-      addRecruiter,
-      removeRecruiter,
-      notify,
-      removeNotification
+      userRole, branding, setUserRole, updateBranding, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats, notifications,
+      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
     }}>
       {children}
     </StoreContext.Provider>
