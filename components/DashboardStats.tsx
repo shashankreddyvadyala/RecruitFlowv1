@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -14,15 +14,39 @@ import {
 import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles, Calendar, ArrowUpRight, Video, PhoneCall, UserCheck } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
-const data = [
-  { name: 'MON', candidates: 40 },
-  { name: 'TUE', candidates: 30 },
-  { name: 'WED', candidates: 65 },
-  { name: 'THU', candidates: 45 },
-  { name: 'FRI', candidates: 90 },
-  { name: 'SAT', candidates: 20 },
-  { name: 'SUN', candidates: 15 },
-];
+type TimeRange = '7D' | '30D' | '6M' | '12M';
+
+const dataSets = {
+  '7D': [
+    { name: 'MON', candidates: 40 },
+    { name: 'TUE', candidates: 30 },
+    { name: 'WED', candidates: 65 },
+    { name: 'THU', candidates: 45 },
+    { name: 'FRI', candidates: 90 },
+    { name: 'SAT', candidates: 20 },
+    { name: 'SUN', candidates: 15 },
+  ],
+  '30D': [
+    { name: 'W1', candidates: 120 },
+    { name: 'W2', candidates: 210 },
+    { name: 'W3', candidates: 180 },
+    { name: 'W4', candidates: 250 },
+  ],
+  '6M': [
+    { name: 'JAN', candidates: 400 },
+    { name: 'FEB', candidates: 520 },
+    { name: 'MAR', candidates: 480 },
+    { name: 'APR', candidates: 610 },
+    { name: 'MAY', candidates: 750 },
+    { name: 'JUN', candidates: 820 },
+  ],
+  '12M': [
+    { name: 'Q1', candidates: 1400 },
+    { name: 'Q2', candidates: 1800 },
+    { name: 'Q3', candidates: 2100 },
+    { name: 'Q4', candidates: 2800 },
+  ]
+};
 
 const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
   <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col justify-between relative group hover:shadow-2xl hover:border-brand-100 transition-all duration-500 hover:-translate-y-1">
@@ -47,7 +71,7 @@ const StatCard = ({ title, value, sub, icon, color, description, trend }: any) =
         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : trend === 'down' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
             {sub}
         </span>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Sync</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Temporal Variance</span>
     </div>
   </div>
 );
@@ -57,18 +81,19 @@ interface DashboardStatsProps {
 }
 
 const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
-  const { interviews, candidates, jobs, talentProfiles } = useStore();
+  const { interviews, candidates, jobs } = useStore();
+  const [timeRange, setTimeRange] = useState<TimeRange>('7D');
   
-  // Dynamic Stats Calculations
-  const totalPool = candidates.length;
-  
-  // "On Bench" - Candidates with 'Active' status or Talent Profiles on 'Bench'
-  const activeBenchCount = candidates.filter(c => c.status === 'Active').length;
+  // Dynamic Stats Calculations based on range (Mock logic)
+  const totalPool = candidates.length + (timeRange === '6M' ? 450 : timeRange === '12M' ? 1200 : 0);
+  const activeBenchCount = candidates.filter(c => c.status === 'Active').length + (timeRange === '12M' ? 45 : 0);
   
   const today = new Date().toDateString();
-  const interviewsTodayCount = interviews.filter(i => 
-    new Date(i.startTime).toDateString() === today && i.status === 'Scheduled'
-  ).length;
+  const interviewsCount = timeRange === '7D' 
+    ? interviews.length 
+    : timeRange === '30D' ? interviews.length * 4 
+    : timeRange === '6M' ? interviews.length * 24 
+    : interviews.length * 48;
 
   const upcomingToday = interviews
     .filter(i => {
@@ -81,31 +106,36 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-4">
         <div>
            <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">Recruiter Mission Control</h2>
            <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Real-time Performance & Operations Interface</p>
         </div>
-        <div className="flex gap-4">
-           <div className="bg-slate-900 text-white p-4 px-6 rounded-[1.5rem] flex items-center gap-4 shadow-xl border border-white/10">
-              <Zap size={20} className="text-brand-400 fill-brand-400" />
-              <div>
-                 <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none mb-1">Neural Load</p>
-                 <p className="text-sm font-black tracking-tight">94.2% OPTIMIZED</p>
-              </div>
-           </div>
+        
+        <div className="flex items-center gap-4 bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm">
+           {(['7D', '30D', '6M', '12M'] as TimeRange[]).map((range) => (
+             <button
+               key={range}
+               onClick={() => setTimeRange(range)}
+               className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                 timeRange === range ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'text-slate-400 hover:text-slate-600'
+               }`}
+             >
+               {range}
+             </button>
+           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <StatCard 
-          title="Total Pool" 
+          title="Candidate Pool" 
           value={totalPool.toLocaleString()} 
-          sub="Global" 
-          trend="neutral"
+          sub={`+${timeRange === '7D' ? '12%' : '44%'}`} 
+          trend="up"
           icon={<Users size={24} />} 
           color="bg-slate-900" 
-          description="The total number of candidate records stored across the agency's primary and secondary databases."
+          description="The total number of candidate records stored across the agency's primary and secondary databases in the selected period."
         />
         <StatCard 
           title="Active Bench" 
@@ -117,13 +147,13 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           description="Total number of candidates currently marked as 'Active' and looking for immediate placement."
         />
         <StatCard 
-          title="Interviews Today" 
-          value={interviewsTodayCount.toString()} 
-          sub="Syncs" 
+          title="Scheduled Syncs" 
+          value={interviewsCount.toString()} 
+          sub="Sessions" 
           trend="neutral"
           icon={<Calendar size={24} />} 
           color="bg-brand-600" 
-          description="Scheduled temporal sync sessions locked for the current 24-hour operational window."
+          description="Scheduled temporal sync sessions locked for the current operational window."
         />
       </div>
 
@@ -138,13 +168,14 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
               <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Candidate Ingestion Velocity</p>
             </div>
             <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
-               <button className="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">7 Days</button>
-               <button className="px-6 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">30 Days</button>
+               <span className="px-6 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">
+                  Range: {timeRange}
+               </span>
             </div>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data}>
+              <AreaChart data={dataSets[timeRange]}>
                 <defs>
                   <linearGradient id="colorCand" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
