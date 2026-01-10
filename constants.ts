@@ -112,7 +112,6 @@ export const MOCK_INTERVIEWS: Interview[] = [
     endTime: new Date(Date.now() + 86400000 + 3600000).toISOString(),
     location: 'https://meet.google.com/abc-defg-hij',
     status: 'Scheduled',
-    // Added missing type property to satisfy Interview interface
     type: 'Technical',
     notes: 'Technical architecture deep dive.'
   },
@@ -127,7 +126,6 @@ export const MOCK_INTERVIEWS: Interview[] = [
     endTime: new Date(Date.now() - 86400000 + 3600000).toISOString(),
     location: 'https://meet.google.com/xyz-pdq-rst',
     status: 'Completed',
-    // Added missing type property to satisfy Interview interface
     type: 'Technical',
     notes: 'Candidate showed great cultural fit. Strong coding skills.'
   }
@@ -148,7 +146,13 @@ export const MOCK_CANDIDATES: Candidate[] = [
     avatarUrl: 'https://picsum.photos/100/100?random=1',
     aiSummary: 'Strong technical depth in frontend architecture. Communication score 9/10.',
     portalToken: 't123_sarah',
-    notes: 'Highly recommended by former colleague. Great with architectural tradeoffs.'
+    notes: 'Highly recommended by former colleague. Great with architectural tradeoffs.',
+    preferredRoles: ['Senior Frontend Engineer', 'Fullstack Developer'],
+    preferredLocations: ['Remote', 'San Francisco', 'New York'],
+    employmentType: 'Full-time',
+    workMode: 'Remote',
+    salaryExpectation: '$180k - $210k',
+    availability: 'Immediate'
   },
   {
     id: 'c2',
@@ -164,7 +168,13 @@ export const MOCK_CANDIDATES: Candidate[] = [
     avatarUrl: 'https://picsum.photos/100/100?random=2',
     aiSummary: 'Good generalist, but lacks specific TypeScript experience needed for senior role.',
     portalToken: 't123_marcus',
-    notes: 'Interested in transitioning from Vue to React. Willing to learn fast.'
+    notes: 'Interested in transitioning from Vue to React. Willing to learn fast.',
+    preferredRoles: ['React Developer', 'Vue Developer'],
+    preferredLocations: ['London', 'Hybrid'],
+    employmentType: 'Contract',
+    workMode: 'Hybrid',
+    salaryExpectation: '£600/day',
+    availability: '2 weeks notice'
   },
   {
     id: 'c3',
@@ -178,7 +188,13 @@ export const MOCK_CANDIDATES: Candidate[] = [
     skills: ['Figma', 'UI/UX', 'User Research'],
     lastActivity: 'Imported via LinkedIn',
     avatarUrl: 'https://picsum.photos/100/100?random=3',
-    notes: 'Excellent portfolio. Previously worked at high-growth fintech startups.'
+    notes: 'Excellent portfolio. Previously worked at high-growth fintech startups.',
+    preferredRoles: ['Senior Product Designer', 'UX Lead'],
+    preferredLocations: ['Berlin', 'Amsterdam'],
+    employmentType: 'Full-time',
+    workMode: 'On-site',
+    salaryExpectation: '€95k+',
+    availability: '1 month notice'
   }
 ];
 

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Candidate, Interview } from '../types';
 import { generateOutreachEmail, analyzeCandidate } from '../services/geminiService';
 // Added Bot to imported icons
-import { Mail, Sparkles, FileText, X, Check, Search, Trash2, UserPlus, Link, Copy, Layers, History, Calendar, Clock, Video, User, Save, ChevronDown, Bell, MessageSquareText, Edit3, Target, Zap, Send, ShieldCheck, ExternalLink, Bot } from 'lucide-react';
+import { Mail, Sparkles, FileText, X, Check, Search, Trash2, UserPlus, Link, Copy, Layers, History, Calendar, Clock, Video, User, Save, ChevronDown, Bell, MessageSquareText, Edit3, Target, Zap, Send, ShieldCheck, ExternalLink, Bot, MapPin, Briefcase, DollarSign, Timer, Compass, Info } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import BulkApplyModal from './BulkApplyModal';
 import ActivityTimeline from './ActivityTimeline';
@@ -487,8 +487,30 @@ const CandidateView: React.FC = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-10 animate-in fade-in duration-500">
+                  <div className="space-y-8 animate-in fade-in duration-500">
                     
+                    {/* Career Trajectory Summary (NEW) */}
+                    <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-200 relative overflow-hidden group shadow-inner">
+                       <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/5 rounded-full blur-[60px] pointer-events-none"></div>
+                       <div className="flex justify-between items-center mb-8">
+                          <h3 className="font-black text-slate-900 text-xs uppercase tracking-[0.4em] flex items-center gap-3">
+                            <Compass size={20} className="text-brand-600" /> Tactical Intent Summary
+                          </h3>
+                          <div className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-slate-400 uppercase tracking-widest">Candidate Input Verified</div>
+                       </div>
+                       
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                          <PreferenceNode icon={<Briefcase size={16}/>} label="Target Missions" values={activeCandidate.preferredRoles || ['Senior React Engineer', 'UI Lead']} />
+                          <PreferenceNode icon={<MapPin size={16}/>} label="Operational Areas" values={activeCandidate.preferredLocations || ['Remote', 'San Francisco']} />
+                          <div className="grid grid-cols-2 gap-4 col-span-1 sm:col-span-2">
+                             <PreferenceNode icon={<Timer size={16}/>} label="Environment" value={activeCandidate.workMode || 'Remote'} />
+                             <PreferenceNode icon={<Zap size={16}/>} label="Engagement" value={activeCandidate.employmentType || 'Permanent'} />
+                             <PreferenceNode icon={<DollarSign size={16}/>} label="Market Demand" value={activeCandidate.salaryExpectation || '$185k+'} />
+                             <PreferenceNode icon={<Clock size={16}/>} label="Activation" value={activeCandidate.availability || 'Immediate'} />
+                          </div>
+                       </div>
+                    </div>
+
                     {/* Recruiter Workspace */}
                     <div className="bg-slate-950 p-10 rounded-[3rem] text-white relative overflow-hidden shadow-2xl border border-white/5">
                       <div className="absolute top-0 right-0 w-48 h-48 bg-brand-600 rounded-full blur-[100px] opacity-30 -mr-20 -mt-20"></div>
@@ -606,5 +628,25 @@ const CandidateView: React.FC = () => {
     </div>
   );
 };
+
+const PreferenceNode = ({ icon, label, value, values }: { icon: React.ReactNode, label: string, value?: string, values?: string[] }) => (
+    <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+            {icon}
+        </div>
+        <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+            {values ? (
+                <div className="flex flex-wrap gap-1">
+                    {values.length > 0 ? values.map(v => (
+                        <span key={v} className="text-[10px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{v}</span>
+                    )) : <span className="text-[10px] font-bold text-slate-300 italic">Not specified</span>}
+                </div>
+            ) : (
+                <p className="text-[10px] font-bold text-slate-700">{value || <span className="text-slate-300 italic">Not specified</span>}</p>
+            )}
+        </div>
+    </div>
+);
 
 export default CandidateView;

@@ -36,6 +36,14 @@ export interface Candidate {
   companyId?: string;
   portalToken?: string; // For self-service link
   notes?: string; // Free-text notes field
+  
+  // Job Search Preferences
+  preferredRoles?: string[];
+  preferredLocations?: string[];
+  employmentType?: 'Full-time' | 'Contract' | 'Any';
+  workMode?: 'Remote' | 'Hybrid' | 'On-site' | 'Any';
+  salaryExpectation?: string;
+  availability?: string; // e.g., "Immediate", "2 weeks notice"
 }
 
 export interface Job {

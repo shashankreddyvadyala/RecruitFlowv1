@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
-import { User, Briefcase, FileText, Upload, Sparkles, ArrowRight, Camera, CheckCircle2, Star } from 'lucide-react';
+/* Added missing Zap and Clock icons to the lucide-react import list */
+import { User, Briefcase, FileText, Upload, Sparkles, ArrowRight, Camera, CheckCircle2, Star, MapPin, Globe, Compass, Timer, DollarSign, Zap, Clock } from 'lucide-react';
 import { UserRole } from '../types';
 import { useStore } from '../context/StoreContext';
 
@@ -18,10 +19,17 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
     bio: '',
     skills: '',
     experience: '5',
-    avatarUrl: `https://picsum.photos/200/200?u=${Math.random()}`
+    avatarUrl: `https://picsum.photos/200/200?u=${Math.random()}`,
+    // New Preference Fields
+    preferredRoles: '',
+    preferredLocations: '',
+    employmentType: 'Full-time',
+    workMode: 'Remote',
+    salaryExpectation: '',
+    availability: 'Immediate'
   });
 
-  const totalSteps = role === UserRole.Candidate ? 3 : 2;
+  const totalSteps = role === UserRole.Candidate ? 4 : 2;
 
   const handleNext = () => {
     if (step < totalSteps) setStep(step + 1);
@@ -35,6 +43,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
   const isStepValid = () => {
     if (step === 1) return formData.name.length > 2 && formData.title.length > 2;
     if (step === 2) return formData.bio.length > 10;
+    if (role === UserRole.Candidate && step === 3) return formData.preferredRoles.length > 2;
     return true;
   };
 
@@ -64,7 +73,10 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
               <StepIndicator num={1} label="Basic Identity" active={step === 1} completed={step > 1} />
               <StepIndicator num={2} label="Professional Bio" active={step === 2} completed={step > 2} />
               {role === UserRole.Candidate && (
-                <StepIndicator num={3} label="Skills & Resume" active={step === 3} completed={step > 3} />
+                <>
+                  <StepIndicator num={3} label="Career Goals" active={step === 3} completed={step > 3} />
+                  <StepIndicator num={4} label="Skills & Resume" active={step === 4} completed={step > 4} />
+                </>
               )}
             </div>
           </div>
@@ -82,7 +94,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
         {/* Right: Form Area */}
         <div className="flex-1 p-8 md:p-12 flex flex-col">
-          <div className="flex-1">
+          <div className="flex-1 overflow-y-auto max-h-[600px] pr-2">
             {step === 1 && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">The Essentials</h3>
@@ -146,7 +158,102 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
               </div>
             )}
 
-            {step === 3 && (
+            {step === 3 && role === UserRole.Candidate && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Career Compass</h3>
+                <p className="text-slate-500 text-sm mb-8 font-medium">Tell us exactly what kind of opportunities you're seeking.</p>
+                
+                <div className="space-y-6 max-w-md mx-auto">
+                   <div className="grid grid-cols-1 gap-6">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                           <Compass size={14} /> Desired Roles
+                        </label>
+                        <input 
+                           value={formData.preferredRoles}
+                           onChange={e => setFormData({...formData, preferredRoles: e.target.value})}
+                           className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
+                           placeholder="e.g. Staff Engineer, Architect (Comma separated)"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                           <MapPin size={14} /> Location Preferences
+                        </label>
+                        <input 
+                           value={formData.preferredLocations}
+                           onChange={e => setFormData({...formData, preferredLocations: e.target.value})}
+                           className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
+                           placeholder="e.g. London, Austin, Remote"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                               <Timer size={14} /> Work Mode
+                            </label>
+                            <select 
+                               value={formData.workMode}
+                               onChange={e => setFormData({...formData, workMode: e.target.value})}
+                               className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner appearance-none uppercase"
+                            >
+                               <option>Remote</option>
+                               <option>Hybrid</option>
+                               <option>On-site</option>
+                               <option>Any</option>
+                            </select>
+                         </div>
+                         <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                               <Zap size={14} /> Agreement
+                            </label>
+                            <select 
+                               value={formData.employmentType}
+                               onChange={e => setFormData({...formData, employmentType: e.target.value})}
+                               className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner appearance-none uppercase"
+                            >
+                               <option>Full-time</option>
+                               <option>Contract</option>
+                               <option>Any</option>
+                            </select>
+                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                               <DollarSign size={14} /> Min Salary
+                            </label>
+                            <input 
+                               value={formData.salaryExpectation}
+                               onChange={e => setFormData({...formData, salaryExpectation: e.target.value})}
+                               className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
+                               placeholder="e.g. $150k+"
+                            />
+                         </div>
+                         <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                               <Clock size={14} /> Availability
+                            </label>
+                            <select 
+                               value={formData.availability}
+                               onChange={e => setFormData({...formData, availability: e.target.value})}
+                               className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner appearance-none uppercase"
+                            >
+                               <option>Immediate</option>
+                               <option>2 Weeks</option>
+                               <option>1 Month</option>
+                               <option>Exploring</option>
+                            </select>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              </div>
+            )}
+
+            {((role === UserRole.Candidate && step === 4) || (role !== UserRole.Candidate && step === 3)) && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Skills & Assets</h3>
                 <p className="text-slate-500 text-sm mb-8 font-medium">Final details to complete your application readiness.</p>
@@ -201,7 +308,7 @@ const StepIndicator = ({ num, label, active, completed }: { num: number, label: 
     <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs border-2 transition-all ${completed ? 'bg-brand-600 border-brand-600 text-white' : active ? 'border-white text-white' : 'border-white/20 text-white/50'}`}>
       {completed ? <CheckCircle2 size={16} /> : num}
     </div>
-    <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+    <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">{label}</span>
   </div>
 );
 

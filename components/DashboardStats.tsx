@@ -11,7 +11,8 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles } from 'lucide-react';
+import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles, Calendar, ArrowUpRight, Video, PhoneCall } from 'lucide-react';
+import { useStore } from '../context/StoreContext';
 
 const data = [
   { name: 'MON', candidates: 40 },
@@ -60,19 +61,30 @@ const StatCard = ({ title, value, sub, icon, color, description, trend }: any) =
 );
 
 const DashboardStats: React.FC = () => {
+  const { interviews } = useStore();
+  
+  const upcomingToday = interviews
+    .filter(i => {
+        const date = new Date(i.startTime);
+        const today = new Date();
+        return date.toDateString() === today.toDateString() && date.getTime() > today.getTime();
+    })
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+    .slice(0, 3);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="flex justify-between items-end mb-4">
+      <div className="flex justify-between items-center mb-4">
         <div>
-           <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">Mission Control</h2>
-           <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Global Intelligence & Performance Dashboard</p>
+           <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">Recruiter Mission Control</h2>
+           <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Real-time Performance & Operations Interface</p>
         </div>
-        <div className="flex gap-2">
-           <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center gap-3 shadow-xl">
-              <Zap size={18} className="text-brand-400 fill-brand-400" />
+        <div className="flex gap-4">
+           <div className="bg-slate-900 text-white p-4 px-6 rounded-[1.5rem] flex items-center gap-4 shadow-xl border border-white/10">
+              <Zap size={20} className="text-brand-400 fill-brand-400" />
               <div>
-                 <p className="text-[8px] font-black uppercase text-slate-500 leading-none">AI Efficiency</p>
-                 <p className="text-sm font-black">94.2%</p>
+                 <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none mb-1">Neural Load</p>
+                 <p className="text-sm font-black tracking-tight">94.2% OPTIMIZED</p>
               </div>
            </div>
         </div>
@@ -124,12 +136,12 @@ const DashboardStats: React.FC = () => {
           </div>
           <div className="flex items-center justify-between mb-12 relative z-10">
             <div>
-              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Acquisition Signal</h3>
-              <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Daily Talent Inflow</p>
+              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Strategic Signal</h3>
+              <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Candidate Ingestion Velocity</p>
             </div>
-            <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
-               <button className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">7D</button>
-               <button className="px-5 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">30D</button>
+            <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+               <button className="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">7 Days</button>
+               <button className="px-6 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">30 Days</button>
             </div>
           </div>
           <div className="h-72">
@@ -155,43 +167,43 @@ const DashboardStats: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-slate-950 p-10 rounded-[3rem] shadow-2xl border border-white/5 flex flex-col relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600 rounded-full blur-[120px] opacity-20 -mr-32 -mt-32"></div>
-          
-          <div className="flex items-center gap-2 mb-2 relative z-10">
-            <h3 className="text-[11px] font-black text-brand-400 uppercase tracking-[0.4em]">Engine Health</h3>
-            <div className="relative group/pipeline">
-              <Info size={14} className="text-slate-600 cursor-help" />
+        {/* Dynamic Mission Briefing widget for Recruiters */}
+        <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group">
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Daily Mission</h3>
+              <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Upcoming Syncs</p>
+            </div>
+            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl group-hover:rotate-12 transition-transform">
+                <Calendar size={24} />
             </div>
           </div>
-          <p className="text-2xl font-black text-white uppercase tracking-tight mb-12 relative z-10">Funnel Integrity</p>
           
-           <div className="flex-1 min-h-0 relative z-10">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart layout="vertical" data={pipelineData}>
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={90} axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#64748b', fontWeight: 900, letterSpacing: '0.05em'}} />
-                <Tooltip 
-                    cursor={{fill: 'rgba(255, 255, 255, 0.03)'}}
-                    contentStyle={{borderRadius: '16px', border: 'none', background: '#0f172a', color: '#fff'}}
-                />
-                <Bar dataKey="value" fill="#8b5cf6" radius={[0, 12, 12, 0]} barSize={28}>
-                    <Area type="monotone" dataKey="value" fill="#8b5cf6" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex-1 space-y-4">
+            {upcomingToday.length > 0 ? (
+                upcomingToday.map((int) => (
+                    <div key={int.id} className="p-5 bg-slate-50 rounded-[1.5rem] border border-slate-100 group/item hover:bg-slate-100 transition-all">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest">
+                                {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {int.location ? <Video size={14} className="text-slate-400" /> : <PhoneCall size={14} className="text-slate-400" />}
+                        </div>
+                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight truncate">{int.candidateName}</h4>
+                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-1 truncate">{int.jobTitle}</p>
+                    </div>
+                ))
+            ) : (
+                <div className="flex flex-col items-center justify-center h-full py-10 opacity-50 grayscale">
+                    <Info size={32} className="text-slate-200 mb-4" />
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Zero missions for today</p>
+                </div>
+            )}
           </div>
           
-          <div className="mt-8 bg-white/5 p-6 rounded-3xl border border-white/10 relative z-10">
-             <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Status</span>
-                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Optimized</span>
-             </div>
-             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                <p className="text-xs text-white font-bold">Agents are parsing 14 new resumes</p>
-             </div>
-          </div>
+          <button className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-3">
+             View Full Deck <ArrowUpRight size={14} />
+          </button>
         </div>
       </div>
     </div>
