@@ -12,7 +12,11 @@ import {
   Bell,
   Search,
   Zap,
-  Star
+  Star,
+  Video,
+  ExternalLink,
+  MapPin,
+  MessageSquare
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
@@ -21,17 +25,19 @@ interface CandidatePortalProps {
 }
 
 const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
-  const { branding, externalJobs } = useStore();
-  const [activeTab, setActiveTab] = useState<'applications' | 'profile' | 'explore'>('applications');
+  const { branding, externalJobs, interviews } = useStore();
+  const [activeTab, setActiveTab] = useState<'applications' | 'profile' | 'explore' | 'interviews'>('applications');
 
-  // Mock candidate data
+  // Filter interviews for this specific candidate (Mocked for Sarah Chen)
+  const myInterviews = interviews
+    .filter(i => i.candidateName.includes('Sarah') || i.candidateId === 'c1')
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
   const myApplications = [
     { id: 'ap1', role: 'Senior React Engineer', company: 'TechFlow Inc', status: 'Interviewing', date: '2 days ago', progress: 60 },
     { id: 'ap2', role: 'Staff Frontend Developer', company: 'CloudScale', status: 'AI Screened', date: '5 days ago', progress: 30 },
     { id: 'ap3', role: 'Lead Architect', company: 'GlobalData', status: 'Applied', date: '1 week ago', progress: 10 },
   ];
-
-  const suggestedJobs = externalJobs.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
@@ -64,8 +70,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
       </header>
 
       <div className="flex-1 max-w-6xl mx-auto w-full p-8 flex flex-col gap-8">
-        {/* Profile Card */}
-        <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl relative overflow-hidden group">
+        {/* Welcome Section */}
+        <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600 rounded-full blur-[100px] opacity-20 -mr-20 -mt-20"></div>
             <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
                 <img src="https://picsum.photos/100/100?random=1" className="w-24 h-24 rounded-3xl border-4 border-white/10 shadow-2xl" alt="Profile" />
@@ -74,43 +80,37 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                     <p className="text-slate-400 font-medium mb-4">Your profile is 85% complete. Recruiters are looking for your skills in <span className="text-brand-400">TypeScript</span> and <span className="text-brand-400">Next.js</span>.</p>
                     <div className="flex flex-wrap gap-2 justify-center md:justify-start">
                         <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10">Active Hunt</span>
-                        <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10">8y Experience</span>
                         <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">Verified Talent</span>
                     </div>
                 </div>
-                <button className="px-8 py-3 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-100 transition-all shadow-xl">
-                    Update Profile
-                </button>
             </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200">
-            <button 
-                onClick={() => setActiveTab('applications')}
-                className={`px-8 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'applications' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-            >
-                My Applications
-            </button>
-            <button 
-                onClick={() => setActiveTab('profile')}
-                className={`px-8 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'profile' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-            >
-                Portfolio & CV
-            </button>
-            <button 
-                onClick={() => setActiveTab('explore')}
-                className={`px-8 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'explore' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-            >
-                Explore Roles
-            </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-6">
+                <div className="flex border-b border-slate-200">
+                    <button 
+                        onClick={() => setActiveTab('applications')}
+                        className={`px-8 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'applications' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Applications
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('interviews')}
+                        className={`px-8 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'interviews' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                    >
+                        My Interviews
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('explore')}
+                        className={`px-8 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'explore' ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Explore Roles
+                    </button>
+                </div>
+
                 {activeTab === 'applications' && (
-                    <div className="space-y-4">
-                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest px-1">Active Status</h3>
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {myApplications.map(app => (
                             <div key={app.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
                                 <div className="flex justify-between items-start mb-4">
@@ -123,107 +123,153 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                             <p className="text-sm font-bold text-slate-500">{app.company}</p>
                                         </div>
                                     </div>
-                                    <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                        app.status === 'Interviewing' ? 'bg-brand-50 text-brand-600' : 'bg-slate-50 text-slate-400'
-                                    }`}>
+                                    <div className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest">
                                         {app.status}
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                        <span>Pipeline Progress</span>
-                                        <span>{app.progress}%</span>
-                                    </div>
-                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                        <div 
-                                            className="h-full bg-brand-500 transition-all duration-1000" 
-                                            style={{ width: `${app.progress}%` }}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="mt-6 flex justify-between items-center pt-4 border-t border-slate-50">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Applied {app.date}</p>
-                                    <button className="text-xs font-black text-brand-600 uppercase tracking-widest flex items-center gap-1 group-hover:gap-2 transition-all">
-                                        View Details <ChevronRight size={14} />
-                                    </button>
+                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-brand-500" style={{ width: `${app.progress}%` }} />
                                 </div>
                             </div>
                         ))}
                     </div>
                 )}
 
-                {activeTab === 'explore' && (
-                    <div className="space-y-4">
-                        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm mb-6 flex gap-4 items-center">
-                            <Search className="text-slate-400" size={20} />
-                            <input type="text" placeholder="Search new opportunities..." className="flex-1 outline-none text-sm font-medium" />
-                            <button className="bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">Search</button>
-                        </div>
-                        {suggestedJobs.map(job => (
-                            <div key={job.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:border-brand-300 transition-all">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex gap-4">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center font-black text-slate-300">
-                                            {job.logoUrl ? <img src={job.logoUrl} className="w-full h-full object-contain" alt="L" /> : job.company[0]}
-                                        </div>
-                                        <div>
-                                            <h4 className="font-black text-slate-900 uppercase tracking-tight">{job.title}</h4>
-                                            <p className="text-sm font-bold text-slate-500">{job.company} • {job.location}</p>
-                                        </div>
+                {activeTab === 'interviews' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {myInterviews.length > 0 ? (
+                      myInterviews.map((int, idx) => {
+                        const isUpcoming = int.status === 'Scheduled';
+                        return (
+                          <div key={int.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                            {isUpcoming && <div className="absolute top-0 right-0 w-24 h-24 bg-brand-600/5 rounded-bl-[4rem] -mr-4 -mt-4"></div>}
+                            
+                            <div className="flex flex-col md:flex-row gap-8">
+                              <div className="w-full md:w-32 shrink-0">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Meeting Time</p>
+                                <h4 className="text-xl font-black text-slate-900 leading-none">
+                                  {new Date(int.startTime).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                </h4>
+                                <p className="text-sm font-bold text-brand-600 mt-1">
+                                  {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+
+                              <div className="flex-1">
+                                <div className="flex justify-between items-start mb-4">
+                                  <div>
+                                    <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase group-hover:text-brand-600 transition-colors">
+                                      {int.jobTitle}
+                                    </h3>
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lead Interviewer:</span>
+                                      <span className="text-[10px] font-black text-slate-900 uppercase">{int.interviewerName}</span>
                                     </div>
-                                    <div className="text-right">
-                                        <div className="flex items-center gap-1 text-emerald-500 font-black text-sm">
-                                            <Zap size={14} className="fill-emerald-500" />
-                                            98% MATCH
-                                        </div>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{job.salary}</p>
-                                    </div>
+                                  </div>
+                                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                                    int.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                    int.status === 'Cancelled' ? 'bg-red-50 text-red-600 border-red-100' :
+                                    'bg-brand-50 text-brand-600 border-brand-100'
+                                  }`}>
+                                    {int.status}
+                                  </span>
                                 </div>
-                                <button className="w-full mt-6 py-3 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 hover:border-brand-200 transition-all">
-                                    Express Interest via AI Agent
-                                </button>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8">
+                                   <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 border border-slate-200 shadow-sm">
+                                        <Video size={20} />
+                                      </div>
+                                      <div>
+                                         <p className="text-[9px] font-black text-slate-400 uppercase">Channel</p>
+                                         <p className="text-xs font-bold text-slate-900">Google Meet</p>
+                                      </div>
+                                   </div>
+                                   <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 border border-slate-200 shadow-sm">
+                                        <MapPin size={20} />
+                                      </div>
+                                      <div>
+                                         <p className="text-[9px] font-black text-slate-400 uppercase">Location</p>
+                                         <p className="text-xs font-bold text-slate-900">Virtual / Remote</p>
+                                      </div>
+                                   </div>
+                                </div>
+
+                                {isUpcoming && (
+                                  <div className="mt-8 flex gap-4">
+                                     <a 
+                                      href={int.location} 
+                                      target="_blank" 
+                                      className="flex-1 flex items-center justify-center gap-3 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/10 hover:bg-slate-800 transition-all"
+                                     >
+                                        Enter Meeting Room <ExternalLink size={16} />
+                                     </a>
+                                     <button className="px-6 py-4 bg-white text-slate-400 border border-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-all">
+                                        Reschedule
+                                     </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                        ))}
-                    </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="py-20 text-center bg-white rounded-[2.5rem] border border-slate-100 border-dashed">
+                        <Calendar size={40} className="mx-auto text-slate-200 mb-4" />
+                        <h3 className="text-xl font-bold text-slate-900">No interviews on file</h3>
+                        <p className="text-slate-500 mt-1 font-medium">Once a recruiter schedules a session, it will appear here.</p>
+                      </div>
+                    )}
+                  </div>
                 )}
             </div>
 
             <div className="space-y-8">
-                {/* Stats Widget */}
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Activity Radar</h3>
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><CheckCircle size={16} /></div>
-                                <span className="text-xs font-black uppercase text-slate-400">Total Views</span>
-                            </div>
-                            <span className="text-xl font-black text-slate-900">42</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center"><Star size={16} /></div>
-                                <span className="text-xs font-black uppercase text-slate-400">Interview Invites</span>
-                            </div>
-                            <span className="text-xl font-black text-slate-900">3</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Upcoming Widget */}
+                {/* Upcoming Widget Summary */}
                 <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm">
                     <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6">Coming Up</h3>
-                    <div className="bg-brand-50 p-4 rounded-2xl border border-brand-100">
-                        <div className="flex items-center gap-3 mb-3">
-                            <Calendar className="text-brand-600" size={18} />
-                            <span className="text-[10px] font-black text-brand-700 uppercase">Today • 2:00 PM</span>
+                    {myInterviews.filter(i => i.status === 'Scheduled').length > 0 ? (
+                      myInterviews.filter(i => i.status === 'Scheduled').slice(0, 1).map(int => (
+                        <div key={int.id} className="bg-brand-50 p-5 rounded-2xl border border-brand-100 mb-4 animate-in fade-in slide-in-from-right-4">
+                          <div className="flex items-center gap-3 mb-3">
+                              <Calendar className="text-brand-600" size={18} />
+                              <span className="text-[10px] font-black text-brand-700 uppercase">
+                                {new Date(int.startTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} • {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                          </div>
+                          <h4 className="font-black text-slate-900 text-sm uppercase leading-tight">{int.jobTitle}</h4>
+                          <p className="text-xs font-bold text-slate-500 mb-4 flex items-center gap-1.5">
+                            <Video size={12} /> with {int.interviewerName}
+                          </p>
+                          <button 
+                            onClick={() => setActiveTab('interviews')}
+                            className="w-full block text-center py-3 bg-brand-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-brand-600/20 hover:bg-brand-700 transition-all"
+                          >
+                            View All Details
+                          </button>
                         </div>
-                        <h4 className="font-black text-slate-900 text-sm uppercase">Technical Screen</h4>
-                        <p className="text-xs font-bold text-slate-500 mb-4">with Spotify Tech Team</p>
-                        <button className="w-full py-2 bg-brand-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-brand-600/20">
-                            Join AI Call
-                        </button>
-                    </div>
+                      ))
+                    ) : (
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                        <Clock className="mx-auto text-slate-300 mb-2" size={24} />
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No pending sessions</p>
+                      </div>
+                    )}
+                </div>
+
+                <div className="bg-slate-900 p-8 rounded-[2rem] shadow-2xl text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[80px] opacity-20 -mr-10 -mt-10"></div>
+                    <h3 className="text-sm font-black text-brand-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                       <Zap size={16} /> Fast Track
+                    </h3>
+                    <p className="text-xs text-slate-400 leading-relaxed font-medium mb-6">
+                      Our AI agents have analyzed your skill set. You are eligible for <b>3 instant screenings</b> this week.
+                    </p>
+                    <button className="w-full py-4 bg-brand-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-brand-600/20 hover:bg-brand-700 transition-all">
+                       Check Eligibility
+                    </button>
                 </div>
             </div>
         </div>

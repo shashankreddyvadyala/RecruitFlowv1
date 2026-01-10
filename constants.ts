@@ -1,5 +1,5 @@
 
-import { Candidate, Job, StageType, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, AgencyBranding } from "./types";
+import { Candidate, Job, StageType, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, AgencyBranding, Interview } from "./types";
 
 export const MOCK_PIPELINE = [
   { id: 's1', name: 'Sourced', type: StageType.Sourcing, order: 0 },
@@ -100,6 +100,39 @@ export const MOCK_ACTIVITIES: Activity[] = [
   }
 ];
 
+export const MOCK_INTERVIEWS: Interview[] = [
+  {
+    id: 'int_1',
+    candidateId: 'c1',
+    candidateName: 'Sarah Chen',
+    jobId: 'j1',
+    jobTitle: 'Senior React Engineer',
+    interviewerName: 'Alex Morgan',
+    startTime: new Date(Date.now() + 86400000).toISOString(), // Tomorrow
+    endTime: new Date(Date.now() + 86400000 + 3600000).toISOString(),
+    location: 'https://meet.google.com/abc-defg-hij',
+    status: 'Scheduled',
+    // Added missing type property to satisfy Interview interface
+    type: 'Technical',
+    notes: 'Technical architecture deep dive.'
+  },
+  {
+    id: 'int_2',
+    candidateId: 'c2',
+    candidateName: 'Marcus Reynolds',
+    jobId: 'j1',
+    jobTitle: 'Senior React Engineer',
+    interviewerName: 'Sarah Jenkins',
+    startTime: new Date(Date.now() - 86400000).toISOString(), // Yesterday
+    endTime: new Date(Date.now() - 86400000 + 3600000).toISOString(),
+    location: 'https://meet.google.com/xyz-pdq-rst',
+    status: 'Completed',
+    // Added missing type property to satisfy Interview interface
+    type: 'Technical',
+    notes: 'Candidate showed great cultural fit. Strong coding skills.'
+  }
+];
+
 export const MOCK_CANDIDATES: Candidate[] = [
   {
     id: 'c1',
@@ -114,7 +147,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
     lastActivity: 'AI Call completed 2h ago',
     avatarUrl: 'https://picsum.photos/100/100?random=1',
     aiSummary: 'Strong technical depth in frontend architecture. Communication score 9/10.',
-    portalToken: 't123_sarah'
+    portalToken: 't123_sarah',
+    notes: 'Highly recommended by former colleague. Great with architectural tradeoffs.'
   },
   {
     id: 'c2',
@@ -129,7 +163,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
     lastActivity: 'Email opened 1d ago',
     avatarUrl: 'https://picsum.photos/100/100?random=2',
     aiSummary: 'Good generalist, but lacks specific TypeScript experience needed for senior role.',
-    portalToken: 't123_marcus'
+    portalToken: 't123_marcus',
+    notes: 'Interested in transitioning from Vue to React. Willing to learn fast.'
   },
   {
     id: 'c3',
@@ -142,7 +177,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
     matchScore: 78,
     skills: ['Figma', 'UI/UX', 'User Research'],
     lastActivity: 'Imported via LinkedIn',
-    avatarUrl: 'https://picsum.photos/100/100?random=3'
+    avatarUrl: 'https://picsum.photos/100/100?random=3',
+    notes: 'Excellent portfolio. Previously worked at high-growth fintech startups.'
   }
 ];
 

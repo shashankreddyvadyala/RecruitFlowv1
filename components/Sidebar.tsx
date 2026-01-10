@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, Briefcase, Bot, Settings, Search, Gem, Building, UsersRound, History } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, Bot, Settings, Search, Gem, Building, UsersRound, History, Calendar } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { UserRole } from '../types';
 
@@ -18,6 +18,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
     ...(isOwner ? [{ id: 'agency-os', label: 'Operations', icon: <Building size={20} /> }] : []),
     ...(isOwner ? [{ id: 'team', label: 'Team Tracker', icon: <UsersRound size={20} /> }] : []),
     ...(isOwner ? [{ id: 'activity-log', label: 'Activity Log', icon: <History size={20} /> }] : []),
+    { id: 'calendar', label: 'Calendar', icon: <Calendar size={20} /> },
     { id: 'job-search', label: 'Job Search', icon: <Search size={20} /> },
     { id: 'talent-market', label: 'Talent Market', icon: <Gem size={20} /> },
     { id: 'jobs', label: 'Jobs & Pipeline', icon: <Briefcase size={20} /> },

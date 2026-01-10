@@ -35,6 +35,7 @@ export interface Candidate {
   avatarUrl: string;
   companyId?: string;
   portalToken?: string; // For self-service link
+  notes?: string; // Free-text notes field
 }
 
 export interface Job {
@@ -57,6 +58,32 @@ export interface Activity {
   timestamp: string;
   author: string;
   entityId: string; // Candidate ID
+}
+
+export interface Interview {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  jobId: string;
+  jobTitle: string;
+  interviewerName: string;
+  startTime: string; // ISO String
+  endTime: string; // ISO String
+  location?: string; // Meeting link or address (OPTIONAL)
+  status: 'Scheduled' | 'Completed' | 'Cancelled';
+  type: 'Screening' | 'Technical' | 'Behavioral' | 'Culture' | 'Final';
+  notes?: string;
+  reminderSent?: boolean;
+  candidateTimezone?: string; // e.g., 'America/New_York'
+  lastPingSent?: string; // Timestamp of last manual reminder
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'success' | 'info' | 'warning' | 'error';
+  timestamp: string;
 }
 
 export interface ExternalJob {
@@ -86,13 +113,13 @@ export interface CandidateProfile {
 }
 
 export interface Placement {
-  id: string;
   candidateName: string;
   jobTitle: string;
   clientName: string;
   placedDate: string;
   recruiterName: string;
   status: 'Confirmed' | 'Pending' | 'Canceled';
+  id: string;
 }
 
 export interface RecruiterStats {

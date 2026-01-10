@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DashboardStats from './components/DashboardStats';
 import AgencyDashboard from './components/AgencyDashboard';
@@ -16,19 +16,45 @@ import TeamManagement from './components/RecruiterLeaderboard';
 import CandidatePortal from './components/CandidatePortal';
 import ProfileSetupPage from './components/ProfileSetupPage';
 import AgencyActivityLog from './components/AgencyActivityLog';
+import InterviewCalendar from './components/InterviewCalendar';
+import NotificationSystem from './components/NotificationSystem';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { UserRole } from './types';
-import { Bell, UserCircle2, ChevronDown } from 'lucide-react';
+import { Bell, UserCircle2, ChevronDown, BellRing } from 'lucide-react';
 
 function MainApp({ onLogout }: { onLogout: () => void }) {
-  const { userRole, setUserRole, branding } = useStore();
+  const { userRole, setUserRole, branding, interviews, notify } = useStore();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isProfileComplete, setIsProfileComplete] = useState(false); // Simulated session state
+  const [isProfileComplete, setIsProfileComplete] = useState(false);
 
-  // Hybrid handling: Owners get everything. Recruiters get limited.
-  // Candidates are handled in a completely separate layout.
-  
+  // Background Alert Checker
+  useEffect(() => {
+    const checkAlerts = () => {
+      const now = new Date();
+      interviews.forEach(int => {
+        if (int.status !== 'Scheduled' || int.reminderSent) return;
+        
+        const startTime = new Date(int.startTime);
+        const diffMs = startTime.getTime() - now.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+
+        // Alert if starting in exactly 15 minutes or less
+        if (diffMins > 0 && diffMins <= 15) {
+          notify(
+            "Upcoming Interview", 
+            `Your session with ${int.candidateName} starts in ${diffMins} minutes.`, 
+            "warning"
+          );
+          // In a real app we'd mark reminderSent in state, here we just trigger toast
+        }
+      });
+    };
+
+    const interval = setInterval(checkAlerts, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [interviews, notify]);
+
   if (userRole !== UserRole.Owner && !isProfileComplete) {
       return <ProfileSetupPage role={userRole} onComplete={() => setIsProfileComplete(true)} />;
   }
@@ -47,6 +73,8 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
         return <TeamManagement />;
       case 'activity-log':
         return <AgencyActivityLog />;
+      case 'calendar':
+        return <InterviewCalendar />;
       case 'jobs':
         return <JobBuilder />;
       case 'job-search':
@@ -81,8 +109,9 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
       <Sidebar currentView={currentView} onChangeView={setCurrentView} />
       
-      <main className="flex-1 overflow-x-hidden overflow-y-auto">
-        {/* Top Header */}
+      <main className="flex-1 overflow-x-hidden overflow-y-auto relative">
+        <NotificationSystem />
+
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-8 sticky top-0 z-40 backdrop-blur-md bg-white/90">
           <div className="flex items-center gap-8 flex-1">
             <h2 className="text-lg font-black text-slate-900 capitalize hidden lg:block tracking-tighter uppercase">
@@ -92,7 +121,6 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="flex items-center gap-4">
-             {/* Role Switcher (For Demo Purposes) */}
              <div className="relative">
                <button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -144,7 +172,6 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
           </div>
         </header>
 
-        {/* Content Area */}
         <div className="p-8">
           {renderContent()}
         </div>
@@ -195,7 +222,6 @@ function App() {
   );
 }
 
-// Separate component to utilize useStore inside StoreProvider
 const StoreRoleWrapper = ({ role, onLogout }: { role: UserRole, onLogout: () => void }) => {
     const { setUserRole } = useStore();
     React.useEffect(() => {
