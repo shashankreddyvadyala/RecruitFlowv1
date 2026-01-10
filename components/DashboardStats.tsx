@@ -11,154 +11,191 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info } from 'lucide-react';
+import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles } from 'lucide-react';
 
 const data = [
-  { name: 'Mon', candidates: 40 },
-  { name: 'Tue', candidates: 30 },
-  { name: 'Wed', candidates: 65 },
-  { name: 'Thu', candidates: 45 },
-  { name: 'Fri', candidates: 90 },
-  { name: 'Sat', candidates: 20 },
-  { name: 'Sun', candidates: 15 },
+  { name: 'MON', candidates: 40 },
+  { name: 'TUE', candidates: 30 },
+  { name: 'WED', candidates: 65 },
+  { name: 'THU', candidates: 45 },
+  { name: 'FRI', candidates: 90 },
+  { name: 'SAT', candidates: 20 },
+  { name: 'SUN', candidates: 15 },
 ];
 
 const pipelineData = [
-  { name: 'Sourcing', value: 120 },
-  { name: 'AI Screen', value: 86 },
-  { name: 'Interview', value: 34 },
-  { name: 'Offer', value: 12 },
-  { name: 'Hired', value: 8 },
+  { name: 'SOURCING', value: 120 },
+  { name: 'AI SCREEN', value: 86 },
+  { name: 'INTERVIEW', value: 34 },
+  { name: 'OFFER', value: 12 },
+  { name: 'HIRED', value: 8 },
 ];
 
-const StatCard = ({ title, value, sub, icon, color, description }: any) => (
-  <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col justify-between relative group">
-    <div className="flex items-start justify-between mb-4">
+const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
+  <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col justify-between relative group hover:shadow-2xl hover:border-brand-100 transition-all duration-500 hover:-translate-y-1">
+    <div className="flex items-start justify-between mb-6">
       <div>
-        <div className="flex items-center gap-1.5 mb-1">
-          <p className="text-slate-500 text-sm font-medium">{title}</p>
+        <div className="flex items-center gap-2 mb-2">
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">{title}</p>
           <div className="relative group/tooltip">
-            <HelpCircle size={14} className="text-slate-300 cursor-help" />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 font-bold uppercase tracking-wider text-center">
+            <HelpCircle size={12} className="text-slate-300 cursor-help" />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 p-3 bg-slate-950 text-white text-[10px] rounded-2xl opacity-0 group-hover/tooltip:opacity-100 transition-all pointer-events-none z-[100] font-bold uppercase tracking-wider text-center shadow-2xl leading-relaxed">
               {description}
             </div>
           </div>
         </div>
-        <h3 className="text-2xl font-black text-slate-900 tracking-tight">{value}</h3>
+        <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{value}</h3>
       </div>
-      <div className={`p-3 rounded-xl ${color} text-white shadow-lg`}>
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 shadow-xl ${color} text-white`}>
         {icon}
       </div>
     </div>
-    <p className={`text-[10px] font-black uppercase tracking-widest ${sub.includes('+') ? 'text-emerald-500' : sub.includes('-') ? 'text-orange-500' : 'text-slate-400'}`}>
-      {sub}
-    </p>
+    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-50">
+        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+            {sub}
+        </span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">vs prev period</span>
+    </div>
   </div>
 );
 
 const DashboardStats: React.FC = () => {
   return (
-    <div className="space-y-6 font-sans">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <div className="flex justify-between items-end mb-4">
+        <div>
+           <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">Mission Control</h2>
+           <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Global Intelligence & Performance Dashboard</p>
+        </div>
+        <div className="flex gap-2">
+           <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center gap-3 shadow-xl">
+              <Zap size={18} className="text-brand-400 fill-brand-400" />
+              <div>
+                 <p className="text-[8px] font-black uppercase text-slate-500 leading-none">AI Efficiency</p>
+                 <p className="text-sm font-black">94.2%</p>
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <StatCard 
-          title="Total Candidates" 
+          title="Talent Pool" 
           value="1,284" 
-          sub="+12% from last month" 
-          icon={<Users size={20} />} 
-          color="bg-brand-600" 
+          sub="+12%" 
+          trend="up"
+          icon={<Users size={24} />} 
+          color="bg-slate-900" 
           description="The cumulative number of talent profiles discovered, imported, or matched in your database."
         />
         <StatCard 
-          title="AI Interviews" 
+          title="AI Cycles" 
           value="342" 
-          sub="85% completion rate" 
-          icon={<BotIcon />} 
-          color="bg-purple-600" 
+          sub="+85%" 
+          trend="up"
+          icon={<Sparkles size={24} />} 
+          color="bg-brand-600" 
           description="Autonomous screenings conducted by voice agents. Measures how much manual first-round work is automated."
         />
         <StatCard 
-          title="Time to Hire" 
-          value="14 days" 
-          sub="-3 days improvement" 
-          icon={<Clock size={20} />} 
+          title="Velocity" 
+          value="14d" 
+          sub="-3d" 
+          trend="up"
+          icon={<Clock size={24} />} 
           color="bg-orange-500" 
-          description="Average duration from job creation to offer acceptance. Low numbers indicate high agency efficiency."
+          description="Average duration from job creation to offer acceptance."
         />
         <StatCard 
-          title="Active Jobs" 
-          value="8" 
-          sub="2 closing soon" 
-          icon={<TrendingUp size={20} />} 
+          title="Live Orders" 
+          value="08" 
+          sub="Stable" 
+          trend="neutral"
+          icon={<TrendingUp size={24} />} 
           color="bg-emerald-500" 
-          description="Total live job orders currently being fulfilled. High counts indicate healthy agency pipeline load."
+          description="Total live job orders currently being fulfilled."
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8">
+             <TrendingUp size={100} className="text-slate-50 opacity-[0.03]" />
+          </div>
+          <div className="flex items-center justify-between mb-12 relative z-10">
             <div>
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Candidate Inflow</h3>
-              <p className="text-xs text-slate-400 font-medium mt-1">Daily talent acquisition via AI Sourcing</p>
+              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Acquisition Signal</h3>
+              <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Daily Talent Inflow</p>
             </div>
-            <div className="flex gap-2">
-               <button className="px-3 py-1 bg-slate-50 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-400 border border-slate-100">7 Days</button>
-               <button className="px-3 py-1 bg-brand-50 rounded-lg text-[10px] font-black uppercase tracking-widest text-brand-600 border border-brand-100">30 Days</button>
+            <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
+               <button className="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">7D</button>
+               <button className="px-5 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">30D</button>
             </div>
           </div>
-          <div className="h-64">
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data}>
                 <defs>
                   <linearGradient id="colorCand" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#cbd5e1', fontSize: 10, fontWeight: 900}} dy={15} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#cbd5e1', fontSize: 10, fontWeight: 900}} dx={-10} />
                 <Tooltip 
-                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'}}
-                  labelStyle={{fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px'}}
+                  cursor={{stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '5 5'}}
+                  contentStyle={{borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)', padding: '20px'}}
+                  labelStyle={{fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px', marginBottom: '8px', letterSpacing: '0.1em'}}
                 />
-                <Area type="monotone" dataKey="candidates" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCand)" strokeWidth={3} />
+                <Area type="monotone" dataKey="candidates" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCand)" strokeWidth={4} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center gap-2 mb-2">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Pipeline Health</h3>
+        <div className="bg-slate-950 p-10 rounded-[3rem] shadow-2xl border border-white/5 flex flex-col relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600 rounded-full blur-[120px] opacity-20 -mr-32 -mt-32"></div>
+          
+          <div className="flex items-center gap-2 mb-2 relative z-10">
+            <h3 className="text-[11px] font-black text-brand-400 uppercase tracking-[0.4em]">Engine Health</h3>
             <div className="relative group/pipeline">
-              <Info size={14} className="text-slate-300 cursor-help" />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover/pipeline:opacity-100 transition-opacity pointer-events-none z-50 font-bold uppercase tracking-wider leading-relaxed shadow-2xl">
-                Measures candidate distribution. A healthy pipeline shows a wide top (Sourcing) and consistent narrowing toward Hired. Bottlenecks are identified by stagnant middle stages.
-              </div>
+              <Info size={14} className="text-slate-600 cursor-help" />
             </div>
           </div>
-          <p className="text-xs text-slate-400 font-medium mb-8">Talent conversion efficiency</p>
-           <div className="h-64">
+          <p className="text-2xl font-black text-white uppercase tracking-tight mb-12 relative z-10">Funnel Integrity</p>
+          
+           <div className="flex-1 min-h-0 relative z-10">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart layout="vertical" data={pipelineData}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" width={80} axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#475569', fontWeight: 700, textTransform: 'uppercase'}} />
-                <Tooltip cursor={{fill: 'rgba(241, 245, 249, 0.4)'}} />
-                <Bar dataKey="value" fill="#8b5cf6" radius={[0, 8, 8, 0]} barSize={24} />
+                <YAxis dataKey="name" type="category" width={90} axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#64748b', fontWeight: 900, letterSpacing: '0.05em'}} />
+                <Tooltip 
+                    cursor={{fill: 'rgba(255, 255, 255, 0.03)'}}
+                    contentStyle={{borderRadius: '16px', border: 'none', background: '#0f172a', color: '#fff'}}
+                />
+                <Bar dataKey="value" fill="#8b5cf6" radius={[0, 12, 12, 0]} barSize={28}>
+                    <Area type="monotone" dataKey="value" fill="#8b5cf6" />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
+          </div>
+          
+          <div className="mt-8 bg-white/5 p-6 rounded-3xl border border-white/10 relative z-10">
+             <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Status</span>
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Optimized</span>
+             </div>
+             <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <p className="text-xs text-white font-bold">Agents are parsing 14 new resumes</p>
+             </div>
           </div>
         </div>
       </div>
     </div>
   );
 };
-
-// Simple internal icon component
-const BotIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-);
 
 export default DashboardStats;
