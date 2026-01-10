@@ -1,6 +1,5 @@
 
-
-import { Candidate, Job, StageType, ExternalJob, CandidateProfile, CRMClient, Deal, Activity, Placement, RecruiterStats, AgencyBranding } from "./types";
+import { Candidate, Job, StageType, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, AgencyBranding } from "./types";
 
 export const MOCK_PIPELINE = [
   { id: 's1', name: 'Sourced', type: StageType.Sourcing, order: 0 },
@@ -53,105 +52,51 @@ export const MOCK_RECRUITER_STATS: RecruiterStats[] = [
   }
 ];
 
-export const MOCK_CRM_CLIENTS: CRMClient[] = [
-  {
-    id: 'client_1',
-    name: 'TechFlow Inc',
-    industry: 'Software',
-    logoUrl: 'https://logo.clearbit.com/spotify.com',
-    website: 'https://techflow.io',
-    contactName: 'Sarah Miller',
-    contactEmail: 's.miller@techflow.io',
-    status: 'Active',
-    activeDeals: 2,
-    location: 'San Francisco, CA'
-  },
-  {
-    id: 'client_2',
-    name: 'Designify',
-    industry: 'Creative Agency',
-    logoUrl: 'https://logo.clearbit.com/airbnb.com',
-    website: 'https://designify.com',
-    contactName: 'Tom Baker',
-    contactEmail: 'tom@designify.com',
-    status: 'Active',
-    activeDeals: 1,
-    location: 'New York, NY'
-  },
-  {
-    id: 'client_3',
-    name: 'HealthPlus',
-    industry: 'Healthcare',
-    logoUrl: 'https://logo.clearbit.com/headspace.com',
-    website: 'https://healthplus.com',
-    contactName: 'Jessica Wu',
-    contactEmail: 'jwu@healthplus.com',
-    status: 'Target',
-    activeDeals: 1,
-    location: 'Austin, TX'
-  }
-];
-
-export const MOCK_DEALS: Deal[] = [
-  {
-    id: 'deal_1',
-    title: 'Q1 Staffing Contract',
-    clientId: 'client_1',
-    clientName: 'TechFlow Inc',
-    stage: 'Negotiation',
-    assignedTo: 'Alex Morgan',
-    probability: 80,
-    expectedCloseDate: '2026-02-28'
-  },
-  {
-    id: 'deal_2',
-    title: 'Product Designer Expansion',
-    clientId: 'client_2',
-    clientName: 'Designify',
-    stage: 'Discovery',
-    assignedTo: 'Sarah Jenkins',
-    probability: 30,
-    expectedCloseDate: '2026-04-15'
-  },
-  {
-    id: 'deal_3',
-    title: 'Global Healthcare Partnership',
-    clientId: 'client_3',
-    clientName: 'HealthPlus',
-    stage: 'Proposal',
-    assignedTo: 'Alex Morgan',
-    probability: 50,
-    expectedCloseDate: '2026-06-10'
-  }
-];
-
 export const MOCK_ACTIVITIES: Activity[] = [
   {
     id: 'act_1',
     type: 'Email',
-    subject: 'Follow up on interview',
-    content: 'Sent summary of Sarah\'s technical test results to the hiring manager.',
-    timestamp: '2026-01-20T14:30:00Z',
-    author: 'Alex Morgan',
+    subject: 'Outreach Sent',
+    content: 'Initial AI sequence triggered for Sarah Chen regarding Senior React Engineer role.',
+    timestamp: '2024-05-20T14:30:00Z',
+    author: 'AI Outreach Bot',
     entityId: 'c1'
   },
   {
     id: 'act_2',
     type: 'Call',
-    subject: 'Screening Call',
-    content: 'Autonomous voice agent completed screening. Candidate is highly motivated.',
-    timestamp: '2026-01-20T10:00:00Z',
-    author: 'AI Agent',
+    subject: 'Screening Completed',
+    content: 'Autonomous voice agent completed 15-minute technical screen with Sarah Chen. Technical score: 92/100.',
+    timestamp: '2024-05-20T10:00:00Z',
+    author: 'Voice AI Agent',
     entityId: 'c1'
   },
   {
     id: 'act_3',
-    type: 'Note',
-    subject: 'Contract update',
-    content: 'TechFlow requested a revision of the MSA terms regarding volume discounts.',
-    timestamp: '2026-01-19T16:45:00Z',
+    type: 'StageChange',
+    subject: 'Moved to Final Interview',
+    content: 'Alex Morgan approved screening results and moved Marcus Reynolds to Final Interview stage.',
+    timestamp: '2024-05-19T16:45:00Z',
     author: 'Alex Morgan',
-    entityId: 'client_1'
+    entityId: 'c2'
+  },
+  {
+    id: 'act_4',
+    type: 'Meeting',
+    subject: 'Hiring Manager Review',
+    content: 'Client feedback session completed for the Product Designer role. Elena Vovas is top priority.',
+    timestamp: '2024-05-19T09:15:00Z',
+    author: 'Sarah Jenkins',
+    entityId: 'c3'
+  },
+  {
+    id: 'act_5',
+    type: 'Note',
+    subject: 'Salary Expectations',
+    content: 'Candidate mentioned they are looking for $180k+ base. Need to check client budget.',
+    timestamp: '2024-05-18T11:20:00Z',
+    author: 'Tom Harris',
+    entityId: 'c2'
   }
 ];
 
@@ -169,7 +114,6 @@ export const MOCK_CANDIDATES: Candidate[] = [
     lastActivity: 'AI Call completed 2h ago',
     avatarUrl: 'https://picsum.photos/100/100?random=1',
     aiSummary: 'Strong technical depth in frontend architecture. Communication score 9/10.',
-    companyId: 'client_1',
     portalToken: 't123_sarah'
   },
   {
@@ -238,7 +182,6 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
     url: '#',
     type: 'Hybrid',
     logoUrl: 'https://logo.clearbit.com/anthropic.com',
-    // Added mock salary to conform to the updated ExternalJob interface
     salary: '$180k - $250k'
   }
 ];

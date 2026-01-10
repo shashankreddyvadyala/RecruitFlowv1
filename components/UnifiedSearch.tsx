@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Users, Building, Briefcase, Command, X } from 'lucide-react';
+import { Search, Briefcase, Command } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 const UnifiedSearch: React.FC = () => {
-  const { candidates, jobs, crmClients } = useStore();
+  const { candidates, jobs } = useStore();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -29,11 +29,7 @@ const UnifiedSearch: React.FC = () => {
     j.client.toLowerCase().includes(query.toLowerCase())
   ).slice(0, 3);
 
-  const filteredClients = crmClients.filter(c => 
-    c.name.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 3);
-
-  const hasResults = filteredCandidates.length > 0 || filteredJobs.length > 0 || filteredClients.length > 0;
+  const hasResults = filteredCandidates.length > 0 || filteredJobs.length > 0;
 
   return (
     <div className="relative w-full max-w-lg" ref={searchRef}>
@@ -41,7 +37,7 @@ const UnifiedSearch: React.FC = () => {
         <Search className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-brand-600 transition-colors" size={18} />
         <input
           type="text"
-          placeholder="Search candidates, clients, or jobs..."
+          placeholder="Search candidates or jobs..."
           className="w-full pl-10 pr-12 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder:text-slate-400"
           value={query}
           onChange={(e) => {
@@ -87,23 +83,6 @@ const UnifiedSearch: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">{j.title}</p>
                         <p className="text-xs text-slate-500 truncate">{j.client}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {filteredClients.length > 0 && (
-                <div className="p-2 border-t border-slate-100">
-                  <h4 className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clients</h4>
-                  {filteredClients.map(cl => (
-                    <button key={cl.id} className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-50 rounded-lg text-left transition-colors">
-                      <div className="w-8 h-8 rounded-lg border border-slate-100 p-1">
-                        <img src={cl.logoUrl} alt="" className="w-full h-full object-contain" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{cl.name}</p>
-                        <p className="text-xs text-slate-500 truncate">{cl.industry}</p>
                       </div>
                     </button>
                   ))}

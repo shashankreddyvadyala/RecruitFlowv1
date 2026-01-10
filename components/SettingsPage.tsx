@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
-import { Save, Cpu, Palette, Globe, Megaphone, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Save, Cpu, Palette, Globe, Megaphone, Trash2, Image as ImageIcon, Upload } from 'lucide-react';
 import { getApiKey, setApiKey } from '../services/externalServices';
 import { useStore } from '../context/StoreContext';
 import { UserRole } from '../types';
 
 const SettingsPage: React.FC = () => {
   const { branding, updateBranding, userRole } = useStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [keys, setKeys] = useState({
     BRIGHTDATA: '',
     AFFINDA: '',
@@ -36,6 +37,21 @@ const SettingsPage: React.FC = () => {
       setApiKey(service, key as string);
     });
     alert('Infrastructure Configuration Saved');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateBranding({ logoUrl: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click();
   };
 
   return (
@@ -82,21 +98,51 @@ const SettingsPage: React.FC = () => {
                   />
                </div>
                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Primary Color</label>
-                  <div className="flex gap-4 items-center">
-                     <input 
-                        type="color" 
-                        value={branding.primaryColor}
-                        onChange={(e) => updateBranding({ primaryColor: e.target.value })}
-                        className="w-12 h-12 rounded-xl border border-slate-200 cursor-pointer p-1"
-                     />
-                     <input 
-                        type="text" 
-                        value={branding.primaryColor}
-                        className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono text-sm"
-                        readOnly
-                     />
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Agency Logo</label>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex gap-3">
+                        <div className="flex-1 relative">
+                            <ImageIcon className="absolute left-3 top-3 text-slate-400" size={18} />
+                            <input 
+                            type="text" 
+                            value={branding.logoUrl}
+                            onChange={(e) => updateBranding({ logoUrl: e.target.value })}
+                            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 font-medium text-sm"
+                            placeholder="https://example.com/logo.png"
+                            />
+                        </div>
+                        {branding.logoUrl && (
+                            <div className="w-11 h-11 border border-slate-200 rounded-xl flex items-center justify-center bg-slate-50 overflow-hidden shrink-0">
+                                <img src={branding.logoUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            accept="image/*" 
+                            onChange={handleFileUpload}
+                        />
+                        <button 
+                            onClick={triggerFileUpload}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                        >
+                            <Upload size={14} /> Upload Logo File
+                        </button>
+                        {branding.logoUrl && (
+                            <button 
+                                onClick={() => updateBranding({ logoUrl: '' })}
+                                className="text-red-500 hover:text-red-600 text-xs font-bold"
+                            >
+                                Remove Logo
+                            </button>
+                        )}
+                    </div>
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-2">Recommended: PNG or SVG with transparent background.</p>
                </div>
             </div>
 
@@ -107,13 +153,17 @@ const SettingsPage: React.FC = () => {
                   <div className="w-2 h-2 rounded-full bg-slate-200"></div>
                </div>
                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                 <Megaphone size={12} /> Email Preview
+                 <Megaphone size={12} /> Email & Signature Preview
                </p>
                
                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
                   <div className="flex items-center gap-3 mb-6">
-                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold" style={{ backgroundColor: branding.primaryColor }}>
-                        {branding.companyName[0]}
+                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold bg-brand-600 overflow-hidden shrink-0">
+                        {branding.logoUrl ? (
+                           <img src={branding.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                        ) : (
+                           branding.companyName[0]
+                        )}
                      </div>
                      <p className="font-bold text-slate-900 text-sm">{branding.companyName}</p>
                   </div>
@@ -121,9 +171,12 @@ const SettingsPage: React.FC = () => {
                      <div className="h-2 w-full bg-slate-100 rounded"></div>
                      <div className="h-2 w-4/5 bg-slate-100 rounded"></div>
                   </div>
-                  <div className="pt-4 border-t border-slate-100">
-                     <p className="text-[10px] font-bold text-slate-900">Alex Morgan</p>
-                     <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{branding.tagline}</p>
+                  <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+                     <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-400">AM</div>
+                     <div>
+                        <p className="text-[10px] font-bold text-slate-900 leading-none">Alex Morgan</p>
+                        <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-1">{branding.tagline}</p>
+                     </div>
                   </div>
                </div>
             </div>

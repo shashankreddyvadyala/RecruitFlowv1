@@ -6,24 +6,19 @@ import {
   Globe, 
   Users, 
   Bot, 
-  CreditCard, 
   Check, 
   X,
   Play,
   Zap,
-  DollarSign,
   Cpu,
-  Layers,
   Database,
   PhoneCall,
-  Mail,
   ShieldCheck,
   Search,
   Layout,
   MessageSquare,
   BarChart3,
   Globe2,
-  ChevronRight,
   Sparkles,
   Server,
   CloudLightning
@@ -141,7 +136,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup }) => {
             </button>
           </div>
 
-          {/* Video Preview Mockup */}
           <div className="relative mx-auto max-w-6xl">
             <div className="absolute -inset-1 bg-gradient-to-r from-brand-500 to-purple-600 rounded-[2.5rem] blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
             <div 
@@ -283,7 +277,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup }) => {
                          <ComparisonRow 
                             category="User Exp" 
                             label="Unified Platform" 
-                            recruitFlow="Sourcing, CRM, ATS in one UI" 
+                            recruitFlow="Sourcing, Automation, Pipeline" 
                             legacy="Fragmented tools & browser tabs" 
                             rfIcon={<CheckCircle className="text-brand-600" size={24} />}
                             legIcon={<X className="text-red-400" size={24} />}
@@ -382,7 +376,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup }) => {
                     title="Agency Growth"
                     price={billingCycle === 'monthly' ? '149' : '99'}
                     desc="Everything you need to automate your entire funnel."
-                    features={['Unlimited Active Jobs', 'AI Voice Screening Agents', 'White-label Portals', 'Priority Analytics', 'Direct CRM Integration']}
+                    features={['Unlimited Active Jobs', 'AI Voice Screening Agents', 'White-label Portals', 'Priority Analytics', 'Direct Automation Hub']}
                     featured={true}
                     onAction={onSignup}
                 />
@@ -455,7 +449,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup }) => {
   );
 };
 
-// Sub-components for cleaner code
 const FeatureItem = ({ icon, title, desc, color }: any) => (
   <div className="text-left group cursor-default">
     <div className={`w-16 h-16 ${color} rounded-[1.5rem] flex items-center justify-center mb-8 shadow-xl group-hover:scale-110 transition-transform duration-500`}>

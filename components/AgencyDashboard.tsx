@@ -1,11 +1,11 @@
 
 import React from 'react';
-import { Briefcase, TrendingUp, Users, PieChart, CheckCircle, Clock } from 'lucide-react';
+import { Briefcase, TrendingUp, Users, CheckCircle, Clock } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 const AgencyDashboard: React.FC = () => {
-  const { crmClients, placements, recruiterStats } = useStore();
+  const { placements, recruiterStats, jobs } = useStore();
 
   const totalPlacements = placements.length;
 
@@ -27,9 +27,9 @@ const AgencyDashboard: React.FC = () => {
         </div>
         
         <StatsCard 
-            title="Active Clients" 
-            value={crmClients.length.toString()} 
-            sub="2 new this week" 
+            title="Active Job Orders" 
+            value={jobs.length.toString()} 
+            sub="3 new this week" 
             icon={<Briefcase size={20} />} 
         />
         <StatsCard 
@@ -71,36 +71,8 @@ const AgencyDashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Client Management */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-1">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-slate-900">Key Account Operations</h3>
-                <button className="text-sm text-brand-600 font-medium hover:underline">View All</button>
-            </div>
-            <div className="space-y-3">
-                {crmClients.map(client => (
-                    <div key={client.id} className="flex items-center gap-4 p-4 border border-slate-100 rounded-lg">
-                        <img src={client.logoUrl} className="w-12 h-12 object-contain p-1 border border-slate-100 rounded-lg bg-slate-50" />
-                        <div className="flex-1">
-                            <div className="flex justify-between">
-                                <h4 className="font-bold text-slate-900">{client.name}</h4>
-                                <span className="text-xs font-medium px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
-                                    {client.status}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
-                                <span>{client.industry}</span>
-                                <span>•</span>
-                                <span>{client.activeDeals} Active Deals</span>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-
         {/* Recent Placements */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-3">
              <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-slate-900">Recent Placements & Activity</h3>
                 <button className="text-sm text-brand-600 font-medium hover:underline">View All</button>

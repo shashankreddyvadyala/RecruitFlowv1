@@ -1,5 +1,4 @@
 
-
 export enum StageType {
   Sourcing = 'SOURCING',
   EmailSequence = 'EMAIL_SEQUENCE',
@@ -10,7 +9,8 @@ export enum StageType {
 
 export enum UserRole {
   Owner = 'OWNER',
-  Recruiter = 'RECRUITER'
+  Recruiter = 'RECRUITER',
+  Candidate = 'CANDIDATE'
 }
 
 export interface PipelineStage {
@@ -33,7 +33,7 @@ export interface Candidate {
   skills: string[];
   lastActivity: string;
   avatarUrl: string;
-  companyId?: string; // Links to CRMClient
+  companyId?: string;
   portalToken?: string; // For self-service link
 }
 
@@ -49,30 +49,6 @@ export interface Job {
   status: 'Active' | 'Draft' | 'Closed';
 }
 
-export interface CRMClient {
-  id: string;
-  name: string;
-  industry: string;
-  logoUrl: string;
-  website: string;
-  contactName: string;
-  contactEmail: string;
-  status: 'Active' | 'Target' | 'Churned';
-  activeDeals: number;
-  location: string;
-}
-
-export interface Deal {
-  id: string;
-  title: string;
-  clientId: string;
-  clientName: string;
-  stage: 'Discovery' | 'Proposal' | 'Negotiation' | 'Closed Won' | 'Closed Lost';
-  assignedTo: string;
-  probability: number; // 0-100
-  expectedCloseDate: string;
-}
-
 export interface Activity {
   id: string;
   type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange';
@@ -80,7 +56,7 @@ export interface Activity {
   content: string;
   timestamp: string;
   author: string;
-  entityId: string; // Candidate ID or Client ID
+  entityId: string; // Candidate ID
 }
 
 export interface ExternalJob {
@@ -93,7 +69,6 @@ export interface ExternalJob {
   url: string;
   type: 'Remote' | 'On-site' | 'Hybrid';
   logoUrl?: string;
-  // Added salary property to resolve type errors in TalentMatch and JobAggregator components
   salary?: string;
 }
 
