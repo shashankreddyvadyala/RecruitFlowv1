@@ -66,7 +66,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <DashboardStats />;
+        return <DashboardStats onViewCalendar={() => setCurrentView('calendar')} />;
       case 'agency-os':
         return <AgencyDashboard />;
       case 'team':
@@ -101,7 +101,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
           </div>
         );
       default:
-        return <DashboardStats />;
+        return <DashboardStats onViewCalendar={() => setCurrentView('calendar')} />;
     }
   };
 

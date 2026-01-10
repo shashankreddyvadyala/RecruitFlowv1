@@ -51,7 +51,8 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const InterviewCalendar: React.FC = () => {
   const { interviews, candidates, jobs, updateInterviewStatus, addInterview, notify } = useStore();
-  const [viewMode, setViewMode] = useState<'Grid' | 'Agenda'>('Grid');
+  // Changed default view mode to Agenda per user requirement
+  const [viewMode, setViewMode] = useState<'Grid' | 'Agenda'>('Agenda');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedInterview, setSelectedInterview] = useState<Interview | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);

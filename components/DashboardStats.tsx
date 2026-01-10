@@ -11,7 +11,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles, Calendar, ArrowUpRight, Video, PhoneCall } from 'lucide-react';
+import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles, Calendar, ArrowUpRight, Video, PhoneCall, UserCheck } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 const data = [
@@ -22,14 +22,6 @@ const data = [
   { name: 'FRI', candidates: 90 },
   { name: 'SAT', candidates: 20 },
   { name: 'SUN', candidates: 15 },
-];
-
-const pipelineData = [
-  { name: 'SOURCING', value: 120 },
-  { name: 'AI SCREEN', value: 86 },
-  { name: 'INTERVIEW', value: 34 },
-  { name: 'OFFER', value: 12 },
-  { name: 'HIRED', value: 8 },
 ];
 
 const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
@@ -52,22 +44,37 @@ const StatCard = ({ title, value, sub, icon, color, description, trend }: any) =
       </div>
     </div>
     <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-50">
-        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : trend === 'down' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
             {sub}
         </span>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">vs prev period</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Sync</span>
     </div>
   </div>
 );
 
-const DashboardStats: React.FC = () => {
-  const { interviews } = useStore();
+interface DashboardStatsProps {
+  onViewCalendar?: () => void;
+}
+
+const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
+  const { interviews, candidates, jobs, talentProfiles } = useStore();
   
+  // Dynamic Stats Calculations
+  const totalPool = candidates.length;
+  
+  // "On Bench" - Candidates with 'Active' status or Talent Profiles on 'Bench'
+  const activeBenchCount = candidates.filter(c => c.status === 'Active').length;
+  
+  const today = new Date().toDateString();
+  const interviewsTodayCount = interviews.filter(i => 
+    new Date(i.startTime).toDateString() === today && i.status === 'Scheduled'
+  ).length;
+
   const upcomingToday = interviews
     .filter(i => {
         const date = new Date(i.startTime);
-        const today = new Date();
-        return date.toDateString() === today.toDateString() && date.getTime() > today.getTime();
+        const todayDate = new Date();
+        return date.toDateString() === todayDate.toDateString() && date.getTime() > todayDate.getTime();
     })
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
     .slice(0, 3);
@@ -90,42 +97,33 @@ const DashboardStats: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <StatCard 
-          title="Talent Pool" 
-          value="1,284" 
-          sub="+12%" 
-          trend="up"
+          title="Total Pool" 
+          value={totalPool.toLocaleString()} 
+          sub="Global" 
+          trend="neutral"
           icon={<Users size={24} />} 
           color="bg-slate-900" 
-          description="The cumulative number of talent profiles discovered, imported, or matched in your database."
+          description="The total number of candidate records stored across the agency's primary and secondary databases."
         />
         <StatCard 
-          title="AI Cycles" 
-          value="342" 
-          sub="+85%" 
+          title="Active Bench" 
+          value={activeBenchCount.toString()} 
+          sub="Hot" 
           trend="up"
-          icon={<Sparkles size={24} />} 
-          color="bg-brand-600" 
-          description="Autonomous screenings conducted by voice agents. Measures how much manual first-round work is automated."
-        />
-        <StatCard 
-          title="Velocity" 
-          value="14d" 
-          sub="-3d" 
-          trend="up"
-          icon={<Clock size={24} />} 
-          color="bg-orange-500" 
-          description="Average duration from job creation to offer acceptance."
-        />
-        <StatCard 
-          title="Live Orders" 
-          value="08" 
-          sub="Stable" 
-          trend="neutral"
-          icon={<TrendingUp size={24} />} 
+          icon={<UserCheck size={24} />} 
           color="bg-emerald-500" 
-          description="Total live job orders currently being fulfilled."
+          description="Total number of candidates currently marked as 'Active' and looking for immediate placement."
+        />
+        <StatCard 
+          title="Interviews Today" 
+          value={interviewsTodayCount.toString()} 
+          sub="Syncs" 
+          trend="neutral"
+          icon={<Calendar size={24} />} 
+          color="bg-brand-600" 
+          description="Scheduled temporal sync sessions locked for the current 24-hour operational window."
         />
       </div>
 
@@ -201,7 +199,10 @@ const DashboardStats: React.FC = () => {
             )}
           </div>
           
-          <button className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-3">
+          <button 
+            onClick={onViewCalendar}
+            className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-3"
+          >
              View Full Deck <ArrowUpRight size={14} />
           </button>
         </div>
