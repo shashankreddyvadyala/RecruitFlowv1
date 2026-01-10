@@ -1,0 +1,5 @@
+{
+  "name": "RecruitFlow AIv1",
+  "description": "An autonomous recruiting platform powered by Gemini. Features intelligent pipeline building, candidate enrichment, and automated AI outreach sequences.",
+  "requestFramePermissions": []
+}
