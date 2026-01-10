@@ -20,6 +20,17 @@ export interface PipelineStage {
   order: number;
 }
 
+export interface OptimizationInsight {
+  id: string;
+  category: 'Tax' | 'Compliance' | 'HTS';
+  title: string;
+  description: string;
+  savingsPotential?: string;
+  htsCode?: string;
+  actionLabel: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
 export interface Candidate {
   id: string;
   firstName: string;
@@ -28,24 +39,28 @@ export interface Candidate {
   role: string;
   status: string;
   stageId: string;
-  matchScore: number; // 0-100
+  matchScore: number; 
   aiSummary?: string;
   skills: string[];
   lastActivity: string;
   avatarUrl: string;
   companyId?: string;
-  portalToken?: string; // For self-service link
-  notes?: string; // Free-text notes field
+  portalToken?: string; 
+  notes?: string; 
+  candidateTimezone?: string;
+  availability?: string;
+
+  // Global Compliance
+  htsClassification?: string;
+  taxOptimizationApplied?: boolean;
   
-  // Job Search Preferences
   preferredRoles?: string[];
   preferredLocations?: string[];
   employmentType?: 'Full-time' | 'Contract' | 'Any';
   workMode?: 'Remote' | 'Hybrid' | 'On-site' | 'Any';
   salaryExpectation?: string;
-  availability?: string; // e.g., "Immediate", "2 weeks notice"
 
-  // Resume Metadata
+  sharedJobIds?: string[]; 
   resumeName?: string;
   resumeUrl?: string;
   resumeUpdatedAt?: string;
@@ -54,8 +69,8 @@ export interface Candidate {
 export interface Job {
   id: string;
   title: string;
-  client: string; // Display name
-  clientId?: string; // ID Link
+  client: string; 
+  clientId?: string; 
   department: string;
   location: string;
   candidatesCount: number;
@@ -65,12 +80,12 @@ export interface Job {
 
 export interface Activity {
   id: string;
-  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload';
+  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload' | 'JobShared' | 'Optimization';
   subject: string;
   content: string;
   timestamp: string;
   author: string;
-  entityId: string; // Candidate ID
+  entityId: string; 
 }
 
 export interface Interview {
@@ -80,15 +95,15 @@ export interface Interview {
   jobId: string;
   jobTitle: string;
   interviewerName: string;
-  startTime: string; // ISO String
-  endTime: string; // ISO String
-  location?: string; // Meeting link or address (OPTIONAL)
+  startTime: string; 
+  endTime: string; 
+  location?: string; 
   status: 'Scheduled' | 'Completed' | 'Cancelled';
   type: 'Screening' | 'Technical' | 'Behavioral' | 'Culture' | 'Final';
   notes?: string;
   reminderSent?: boolean;
-  candidateTimezone?: string; // e.g., 'America/New_York'
-  lastPingSent?: string; // Timestamp of last manual reminder
+  candidateTimezone?: string;
+  lastPingSent?: string;
 }
 
 export interface Notification {
@@ -143,7 +158,7 @@ export interface RecruiterStats {
   activityScore: number; 
   emailsSent: number;
   callsLogged: number;
-  conversionRate: number; // Percentage
+  conversionRate: number; 
   activeJobs: number;
 }
 

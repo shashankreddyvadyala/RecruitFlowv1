@@ -1,12 +1,9 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { Candidate, GeneratedEmail, ApplicationMaterials } from "../types";
+import { Candidate, GeneratedEmail, ApplicationMaterials, OptimizationInsight } from "../types";
 
-// Always use a named parameter for apiKey and direct access to process.env.API_KEY
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Helper to check if API key is present
 export const isApiConfigured = () => !!process.env.API_KEY;
 
 export const generateOutreachEmail = async (
@@ -20,14 +17,10 @@ export const generateOutreachEmail = async (
     Write a personalized cold outreach email to ${candidate.firstName} ${candidate.lastName} 
     for the ${candidate.role} position at ${companyName}.
     The sender is ${senderName}.
-    
     Candidate Skills: ${candidate.skills.join(', ')}.
-    
-    Make it professional but engaging. 
     Return JSON with 'subject' and 'body' fields.
   `;
 
-  // Use recommended gemini-3-flash-preview for text tasks
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
@@ -43,10 +36,87 @@ export const generateOutreachEmail = async (
     }
   });
 
-  const text = response.text;
-  if (!text) throw new Error("No response from AI");
-  
-  return JSON.parse(text) as GeneratedEmail;
+  return JSON.parse(response.text || '{}') as GeneratedEmail;
+};
+
+export const getHiringOptimization = async (
+    candidate: Candidate,
+    jobTitle: string,
+    location: string
+): Promise<OptimizationInsight[]> => {
+    if (!process.env.API_KEY) throw new Error("API Key missing");
+
+    const prompt = `
+      Analyze this international hire strategy.
+      Candidate: ${candidate.firstName} ${candidate.lastName} (${candidate.skills.join(', ')})
+      Job: ${jobTitle}
+      Client Location: ${location}
+
+      1. Suggest a relevant HTS (Harmonized Tariff Schedule) classification code for this professional service (Schedule B).
+      2. Identify 2 Tax Optimization strategies (e.g. R&D credits, regional incentives).
+      3. Quantify potential annual savings.
+
+      Return JSON array of objects with: 
+      id, category (Tax/HTS/Compliance), title, description, savingsPotential, htsCode, actionLabel, severity (high/medium/low).
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                category: { type: Type.STRING },
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                savingsPotential: { type: Type.STRING },
+                htsCode: { type: Type.STRING },
+                actionLabel: { type: Type.STRING },
+                severity: { type: Type.STRING }
+              }
+            }
+          }
+        }
+    });
+
+    return JSON.parse(response.text || '[]');
+};
+
+export const suggestInterviewSlots = async (
+  candidateName: string,
+  candidateTimezone: string,
+  candidateAvailability: string,
+  recruiterTimezone: string
+): Promise<{ date: string; time: string; reason: string; score: number }[]> => {
+  if (!process.env.API_KEY) throw new Error("API Key missing");
+
+  const prompt = `Suggest 3 ideal interview slots for ${candidateName}.`;
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            date: { type: Type.STRING },
+            time: { type: Type.STRING },
+            reason: { type: Type.STRING },
+            score: { type: Type.NUMBER }
+          }
+        }
+      }
+    }
+  });
+
+  return JSON.parse(response.text || '[]');
 };
 
 export const analyzeCandidate = async (
@@ -55,19 +125,7 @@ export const analyzeCandidate = async (
 ): Promise<{ score: number; summary: string; skills: string[] }> => {
   if (!process.env.API_KEY) throw new Error("API Key missing");
 
-  const prompt = `
-    Analyze this candidate's resume against the job description.
-    
-    Resume: "${resumeText.substring(0, 1000)}..."
-    Job Description: "${jobDescription.substring(0, 500)}..."
-    
-    Provide:
-    1. A match score from 0 to 100.
-    2. A brief 2-sentence summary of why they fit or don't fit.
-    3. A list of top 5 extracted skills.
-  `;
-
-  // Use recommended gemini-3-flash-preview for text analysis tasks
+  const prompt = `Analyze this candidate resume against the job description.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
@@ -84,10 +142,7 @@ export const analyzeCandidate = async (
     }
   });
 
-   const text = response.text;
-  if (!text) throw new Error("No response from AI");
-
-  return JSON.parse(text);
+  return JSON.parse(response.text || '{}');
 };
 
 export const generateJobDescription = async (
@@ -96,23 +151,11 @@ export const generateJobDescription = async (
   location: string, 
   keywords: string
 ): Promise<string> => {
-   if (!process.env.API_KEY) throw new Error("API Key missing");
-   
-   let prompt = `Write a concise, exciting job description for a ${title}`;
-   if (department) prompt += ` in the ${department} department`;
-   if (location) prompt += ` located in ${location}`;
-   prompt += `.`;
-   
-   if (keywords) prompt += ` Focus on these keywords: ${keywords}.`;
-   prompt += ` Format with Markdown. Structure with Responsibilities and Requirements.`;
-
-   // Use recommended gemini-3-flash-preview for text generation tasks
    const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: prompt
+    contents: `Write a job description for ${title}.`
    });
-
-   return response.text || "Could not generate description.";
+   return response.text || "";
 }
 
 export const generateApplicationMaterials = async (
@@ -120,27 +163,11 @@ export const generateApplicationMaterials = async (
     jobTitle: string,
     company: string
 ): Promise<ApplicationMaterials> => {
-    if (!process.env.API_KEY) throw new Error("API Key missing");
-
-    const prompt = `
-      You are an expert recruiter.
-      Prepare application materials for:
-      Candidate: ${candidate.firstName} ${candidate.lastName}
-      Role: ${jobTitle} at ${company}
-      Skills: ${candidate.skills.join(', ')}
-
-      1. Write a short, punchy cover letter (max 200 words).
-      2. Write a 3-bullet point summary of why they are the perfect fit (to paste into "Why should we hire you?" boxes).
-      
-      Return JSON with 'coverLetter' and 'tailoredResumeSummary'.
-    `;
-
-    // Use recommended gemini-3-flash-preview for text assistant tasks
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: prompt,
+        contents: `Write materials for ${candidate.firstName} for ${jobTitle}.`,
         config: {
-          responseMimeType: 'application/json',
+          responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -150,9 +177,5 @@ export const generateApplicationMaterials = async (
           }
         }
     });
-
-    const text = response.text;
-    if (!text) throw new Error("No response from AI");
-    
-    return JSON.parse(text) as ApplicationMaterials;
+    return JSON.parse(response.text || '{}');
 };

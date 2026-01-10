@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Briefcase, TrendingUp, Users, CheckCircle, Clock, Calendar } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Briefcase, TrendingUp, CheckCircle, Clock } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
@@ -10,20 +10,43 @@ const AgencyDashboard: React.FC = () => {
   const { placements, recruiterStats, jobs } = useStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('30D');
 
-  // Mock scaling for demo purposes based on range
-  const rangeMultiplier = timeRange === '7D' ? 0.25 : timeRange === '30D' ? 1 : timeRange === '6M' ? 5 : 9;
-  const scaledPlacements = Math.round(placements.length * rangeMultiplier);
-  const activeJobsCount = jobs.length + (timeRange === '12M' ? 24 : 0);
-  const avgTime = timeRange === '7D' ? '12 days' : '18 days';
+  // Unified scaling logic for operations intelligence
+  const stats = useMemo(() => {
+    let multiplier = 1;
+    let avgTime = "18 days";
+    
+    switch(timeRange) {
+        case '7D': 
+            multiplier = 0.25; 
+            avgTime = "12 days";
+            break;
+        case '30D': 
+            multiplier = 1; 
+            avgTime = "18 days";
+            break;
+        case '6M': 
+            multiplier = 6; 
+            avgTime = "16 days";
+            break;
+        case '12M': 
+            multiplier = 12; 
+            avgTime = "15 days";
+            break;
+    }
 
-  const chartData = recruiterStats.map(r => ({ 
-    name: r.name, 
-    value: Math.round(r.placements * rangeMultiplier) 
-  }));
+    return {
+        placements: Math.round(placements.length * multiplier),
+        activeJobs: Math.round(jobs.length * (multiplier < 1 ? 1 : multiplier * 0.8)),
+        avgTime,
+        chartData: recruiterStats.map(r => ({ 
+            name: r.name, 
+            value: Math.round(r.placements * multiplier) 
+        }))
+    };
+  }, [timeRange, placements, recruiterStats, jobs]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Temporal Command Bar */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Operations Intelligence</h2>
@@ -45,12 +68,11 @@ const AgencyDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Top Level Operations KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
              <div className="relative z-10">
                 <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-4">Total Placements ({timeRange})</p>
-                <h3 className="text-5xl font-black tracking-tighter leading-none">{scaledPlacements}</h3>
+                <h3 className="text-5xl font-black tracking-tighter leading-none">{stats.placements}</h3>
                 <p className="text-emerald-400 text-xs mt-6 font-black uppercase tracking-widest flex items-center gap-2">
                     <TrendingUp size={14} /> +24% Velocity
                 </p>
@@ -62,20 +84,19 @@ const AgencyDashboard: React.FC = () => {
         
         <StatsCard 
             title="Active Job Orders" 
-            value={activeJobsCount.toString()} 
+            value={stats.activeJobs.toString()} 
             sub={`${timeRange === '7D' ? '3' : '14'} new this period`} 
             icon={<Briefcase size={24} />} 
         />
         <StatsCard 
             title="Avg Time to Fill" 
-            value={avgTime} 
+            value={stats.avgTime} 
             sub="Efficiency Threshold" 
             icon={<Clock size={24} />} 
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-         {/* Main Chart */}
          <div className="lg:col-span-3 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 relative overflow-hidden">
             <div className="flex items-center justify-between mb-12">
                 <div>
@@ -89,7 +110,7 @@ const AgencyDashboard: React.FC = () => {
 
             <div className="h-80">
                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
+                    <AreaChart data={stats.chartData}>
                         <defs>
                             <linearGradient id="colorPlacements" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
@@ -111,7 +132,6 @@ const AgencyDashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
-        {/* Recent Placements */}
         <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 lg:col-span-3">
              <div className="flex justify-between items-center mb-10">
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Recent Wins ({timeRange})</h3>

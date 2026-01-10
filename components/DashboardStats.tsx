@@ -1,8 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -11,12 +9,12 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Users, CheckCircle, Clock, TrendingUp, HelpCircle, Info, Zap, Sparkles, Calendar, ArrowUpRight, Video, PhoneCall, UserCheck } from 'lucide-react';
+import { Users, Calendar, ArrowUpRight, Video, PhoneCall, UserCheck, HelpCircle, Info, TrendingUp } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 type TimeRange = '7D' | '30D' | '6M' | '12M';
 
-const dataSets = {
+const dataSets: Record<TimeRange, { name: string; candidates: number }[]> = {
   '7D': [
     { name: 'MON', candidates: 40 },
     { name: 'TUE', candidates: 30 },
@@ -27,10 +25,10 @@ const dataSets = {
     { name: 'SUN', candidates: 15 },
   ],
   '30D': [
-    { name: 'W1', candidates: 120 },
-    { name: 'W2', candidates: 210 },
-    { name: 'W3', candidates: 180 },
-    { name: 'W4', candidates: 250 },
+    { name: 'WEEK 1', candidates: 120 },
+    { name: 'WEEK 2', candidates: 210 },
+    { name: 'WEEK 3', candidates: 180 },
+    { name: 'WEEK 4', candidates: 250 },
   ],
   '6M': [
     { name: 'JAN', candidates: 400 },
@@ -81,28 +79,34 @@ interface DashboardStatsProps {
 }
 
 const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
-  const { interviews, candidates, jobs } = useStore();
+  const { interviews, candidates } = useStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('7D');
   
-  // Dynamic Stats Calculations based on range (Mock logic)
-  const totalPool = candidates.length + (timeRange === '6M' ? 450 : timeRange === '12M' ? 1200 : 0);
-  const activeBenchCount = candidates.filter(c => c.status === 'Active').length + (timeRange === '12M' ? 45 : 0);
-  
-  const today = new Date().toDateString();
-  const interviewsCount = timeRange === '7D' 
-    ? interviews.length 
-    : timeRange === '30D' ? interviews.length * 4 
-    : timeRange === '6M' ? interviews.length * 24 
-    : interviews.length * 48;
+  // Dynamic scaling based on the selected window
+  const stats = useMemo(() => {
+    let multiplier = 1;
+    switch(timeRange) {
+        case '30D': multiplier = 4; break;
+        case '6M': multiplier = 24; break;
+        case '12M': multiplier = 48; break;
+        default: multiplier = 1;
+    }
 
-  const upcomingToday = interviews
-    .filter(i => {
-        const date = new Date(i.startTime);
-        const todayDate = new Date();
-        return date.toDateString() === todayDate.toDateString() && date.getTime() > todayDate.getTime();
-    })
-    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-    .slice(0, 3);
+    return {
+        pool: (candidates.length * multiplier).toLocaleString(),
+        active: Math.floor(candidates.filter(c => c.status === 'Active').length * (multiplier * 0.8)).toString(),
+        syncs: (interviews.length * multiplier).toString(),
+        trend: timeRange === '7D' ? '+12%' : timeRange === '30D' ? '+24%' : '+68%'
+    };
+  }, [timeRange, candidates, interviews]);
+
+  const todayInterviews = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    return interviews
+      .filter(i => new Date(i.startTime).toDateString() === todayStr)
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .slice(0, 3);
+  }, [interviews]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -130,30 +134,30 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <StatCard 
           title="Candidate Pool" 
-          value={totalPool.toLocaleString()} 
-          sub={`+${timeRange === '7D' ? '12%' : '44%'}`} 
+          value={stats.pool} 
+          sub={stats.trend} 
           trend="up"
           icon={<Users size={24} />} 
           color="bg-slate-900" 
-          description="The total number of candidate records stored across the agency's primary and secondary databases in the selected period."
+          description="Total candidate ingestion across the specified temporal window."
         />
         <StatCard 
           title="Active Bench" 
-          value={activeBenchCount.toString()} 
-          sub="Hot" 
+          value={stats.active} 
+          sub="Locked" 
           trend="up"
           icon={<UserCheck size={24} />} 
           color="bg-emerald-500" 
-          description="Total number of candidates currently marked as 'Active' and looking for immediate placement."
+          description="Qualified operatives currently active and engaging with agency pipelines."
         />
         <StatCard 
           title="Scheduled Syncs" 
-          value={interviewsCount.toString()} 
+          value={stats.syncs} 
           sub="Sessions" 
           trend="neutral"
           icon={<Calendar size={24} />} 
           color="bg-brand-600" 
-          description="Scheduled temporal sync sessions locked for the current operational window."
+          description="Total interview transmissions scheduled or completed in this period."
         />
       </div>
 
@@ -169,7 +173,7 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
             </div>
             <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
                <span className="px-6 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">
-                  Range: {timeRange}
+                  Window: {timeRange}
                </span>
             </div>
           </div>
@@ -196,7 +200,6 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           </div>
         </div>
 
-        {/* Dynamic Mission Briefing widget for Recruiters */}
         <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group">
           <div className="flex items-center justify-between mb-10">
             <div>
@@ -209,8 +212,8 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           </div>
           
           <div className="flex-1 space-y-4">
-            {upcomingToday.length > 0 ? (
-                upcomingToday.map((int) => (
+            {todayInterviews.length > 0 ? (
+                todayInterviews.map((int) => (
                     <div key={int.id} className="p-5 bg-slate-50 rounded-[1.5rem] border border-slate-100 group/item hover:bg-slate-100 transition-all">
                         <div className="flex justify-between items-start mb-2">
                             <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest">

@@ -26,7 +26,8 @@ interface StoreContextType {
   updateCandidateNotes: (id: string, notes: string) => void;
   updateCandidateProfile: (id: string, updates: Partial<Candidate>) => void;
   addActivity: (activity: Activity) => void;
-  sourceCandidatesForJob: (externalJobId: string) => Promise<void>;
+  sourceCandidatesForJob: (externalJobId: string, onPhaseChange?: (phase: string) => void) => Promise<void>;
+  shareJobWithCandidate: (candidateId: string, externalJob: ExternalJob) => Promise<void>;
   addInterview: (interview: Interview) => void;
   updateInterviewStatus: (id: string, status: Interview['status']) => void;
   addRecruiter: (recruiter: RecruiterStats) => void;
@@ -37,10 +38,9 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'recruitflow_persistence_v1';
+const STORAGE_KEY = 'recruitflow_persistence_v2';
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load initial state from LocalStorage or Constants
   const getInitialData = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -67,7 +67,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [recruiterStats, setRecruiterStats] = useState<RecruiterStats[]>(persisted?.recruiterStats || Constants.MOCK_RECRUITER_STATS);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Persistence side-effect: Save state whenever it changes
   useEffect(() => {
     const dataToSave = {
       userRole,
@@ -120,33 +119,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateCandidateProfile = (id: string, updates: Partial<Candidate>) => {
     setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-    const cand = candidates.find(c => c.id === id);
-    if (cand) {
-        addActivity({
-            id: `act_upd_${Date.now()}`,
-            type: updates.resumeName ? 'ResumeUpload' : 'ProfileUpdate',
-            subject: updates.resumeName ? 'Dossier Artifact Uploaded' : 'Profile Synchronized',
-            content: updates.resumeName ? `New resume uploaded: ${updates.resumeName}` : `Skills updated by candidate.`,
-            timestamp: new Date().toISOString(),
-            author: `${cand.firstName} ${cand.lastName}`,
-            entityId: id
-        });
-    }
   };
 
   const addActivity = (activity: Activity) => setActivities(prev => [activity, ...prev]);
 
   const addInterview = (interview: Interview) => {
     setInterviews(prev => [...prev, interview]);
-    addActivity({
-      id: `act_int_${Date.now()}`,
-      type: 'Meeting',
-      subject: 'Temporal Sync Locked',
-      content: `${interview.type} session scheduled for ${interview.candidateName}.`,
-      timestamp: new Date().toISOString(),
-      author: 'Scheduling Agent',
-      entityId: interview.candidateId
-    });
   };
 
   const updateInterviewStatus = (id: string, status: Interview['status']) => {
@@ -156,35 +134,104 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addRecruiter = (recruiter: RecruiterStats) => setRecruiterStats(prev => [recruiter, ...prev]);
   const removeRecruiter = (id: string) => setRecruiterStats(prev => prev.filter(r => r.id !== id));
 
-  const sourceCandidatesForJob = async (externalJobId: string) => {
+  const sourceCandidatesForJob = async (externalJobId: string, onPhaseChange?: (phase: string) => void) => {
     const exJob = externalJobs.find(j => j.id === externalJobId);
     if (!exJob) return;
 
-    const newCandidates: Candidate[] = Array.from({ length: 2 }).map((_, i) => ({
-        id: `sourced_${Date.now()}_${i}`,
-        firstName: ['Alex', 'Jordan'][i],
-        lastName: ['Smith', 'Doe'][i],
-        email: `candidate.${Date.now()}.${i}@example.com`,
-        role: exJob.title,
-        status: 'New',
-        stageId: 's1',
-        matchScore: 80 + Math.floor(Math.random() * 15),
-        skills: ['Sourced via AI', exJob.title.split(' ')[0]],
-        lastActivity: 'Just discovered',
-        avatarUrl: `https://picsum.photos/100/100?random=${Date.now() + i}`
-    }));
+    // PROTOCOL START
+    onPhaseChange?.('Elite Bench (Open to Work)');
+    await new Promise(r => setTimeout(r, 1200));
 
-    for (const c of newCandidates) {
-        await new Promise(r => setTimeout(r, 500));
-        addCandidate(c);
+    // Phase 1: Elite Bench Scan
+    const benchMatches = talentProfiles.filter(p => 
+      p.status === 'Bench' && 
+      (p.title.toLowerCase().includes(exJob.title.toLowerCase().split(' ')[0]) || 
+       exJob.title.toLowerCase().includes(p.title.toLowerCase()))
+    );
+
+    // Phase 2: Active Pool Scan
+    onPhaseChange?.('Neural Pool (Passive Scan)');
+    await new Promise(r => setTimeout(r, 1500));
+    const poolMatches = candidates.filter(c => 
+      c.role.toLowerCase().includes(exJob.title.toLowerCase().split(' ')[0]) &&
+      !benchMatches.some(b => b.name === `${c.firstName} ${c.lastName}`)
+    );
+
+    // Phase 3: External Discovery
+    onPhaseChange?.('Market Discovery (Discovery Tier)');
+    await new Promise(r => setTimeout(r, 1800));
+
+    const finalCandidates: Candidate[] = [];
+
+    // Map Elite Bench (Top Priority)
+    benchMatches.forEach(p => {
+        finalCandidates.push({
+            id: `sourced_bench_${Date.now()}_${p.id}`,
+            firstName: p.name.split(' ')[0],
+            lastName: p.name.split(' ').slice(1).join(' ') || 'Sourced',
+            email: `${p.name.toLowerCase().replace(' ', '.')}@bench.agency.ai`,
+            role: p.title,
+            status: 'Active',
+            stageId: 's1',
+            matchScore: 94 + Math.floor(Math.random() * 5),
+            skills: p.skills,
+            lastActivity: 'Sourced: Elite Bench (Preference 1)',
+            avatarUrl: p.avatarUrl,
+            notes: 'SYSTEM PRIORITY 1: This candidate is ON BENCH and actively seeking a new mission.'
+        });
+    });
+
+    // Map Active Pool (Preference 2)
+    poolMatches.slice(0, 2).forEach(c => {
+        finalCandidates.push({
+            ...c,
+            id: `sourced_pool_${Date.now()}_${c.id}`,
+            matchScore: 82 + Math.floor(Math.random() * 8),
+            lastActivity: 'Sourced: Passive Pool (Preference 2)',
+            notes: (c.notes || '') + '\nSYSTEM PRIORITY 2: Re-sourced from passive agency pool.'
+        });
+    });
+
+    // Final supplementary Discovery
+    if (finalCandidates.length < 3) {
+        finalCandidates.push({
+            id: `sourced_ext_${Date.now()}`,
+            firstName: 'Market',
+            lastName: 'Operative',
+            email: `discovery.${Date.now()}@global.ai`,
+            role: exJob.title,
+            status: 'New',
+            stageId: 's1',
+            matchScore: 71 + Math.floor(Math.random() * 9),
+            skills: ['Sourced via Neural Search'],
+            lastActivity: 'Market Discovery (Tier 3)',
+            avatarUrl: `https://picsum.photos/100/100?u=${Date.now()}`
+        });
     }
-    notify("Search Protocol Success", `Identified ${newCandidates.length} high-resonance targets.`, "success");
+
+    for (const cand of finalCandidates) {
+        addCandidate(cand);
+    }
+
+    notify("Sourcing Protocol Finished", `Pipeline built: ${benchMatches.length} Bench, ${poolMatches.length} Pool resonance found.`, "success");
+  };
+
+  const shareJobWithCandidate = async (candidateId: string, externalJob: ExternalJob) => {
+    setCandidates(prev => prev.map(c => {
+      if (c.id === candidateId) {
+        const currentShared = c.sharedJobIds || [];
+        if (!currentShared.includes(externalJob.id)) {
+          return { ...c, sharedJobIds: [...currentShared, externalJob.id] };
+        }
+      }
+      return c;
+    }));
   };
 
   return (
     <StoreContext.Provider value={{
       userRole, branding, setUserRole, updateBranding, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats, notifications,
-      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
+      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, shareJobWithCandidate, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
     }}>
       {children}
     </StoreContext.Provider>

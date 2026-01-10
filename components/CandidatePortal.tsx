@@ -51,7 +51,8 @@ import {
   ArrowLeft,
   Copy,
   Upload,
-  Plus
+  Plus,
+  Share2
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { generateApplicationMaterials } from '../services/geminiService';
@@ -172,6 +173,14 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
     matchScore: 85 + Math.floor(Math.random() * 14)
   })), [externalJobs]);
 
+  const sharedJobs = useMemo(() => {
+      if (!myData.sharedJobIds) return [];
+      return externalJobs.filter(j => myData.sharedJobIds!.includes(j.id)).map(j => ({
+          ...j,
+          matchScore: 95 + Math.floor(Math.random() * 5)
+      }));
+  }, [myData.sharedJobIds, externalJobs]);
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col selection:bg-brand-100 selection:text-brand-900">
       <header className="bg-white border-b border-slate-200 h-24 flex items-center justify-between px-6 lg:px-12 sticky top-0 z-40 backdrop-blur-md bg-white/95">
@@ -232,7 +241,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                         <div className="relative z-10">
                             <h1 className="text-4xl lg:text-5xl font-black uppercase tracking-tight mb-4 leading-[0.9] text-balance">Master the <br/><span className="text-brand-400">Search Protocol</span>.</h1>
                             <p className="text-slate-400 text-lg font-medium max-w-sm leading-relaxed mt-6">
-                                You have <span className="text-white font-bold underline decoration-brand-500 decoration-2 underline-offset-4">12 new high-match quests</span> available.
+                                You have <span className="text-white font-bold underline decoration-brand-500 decoration-2 underline-offset-4">{sharedJobs.length > 0 ? `${sharedJobs.length} shared & 12 new` : '12 new high-match'} quests</span> available.
                             </p>
                         </div>
                         <div className="mt-12 flex flex-col sm:flex-row gap-4 relative z-10">
@@ -282,6 +291,35 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                          </div>
                     </div>
                 </div>
+
+                {sharedJobs.length > 0 && (
+                    <div className="animate-in slide-in-from-bottom-8 duration-700">
+                        <div className="flex items-center gap-3 mb-8">
+                             <Share2 className="text-brand-600" size={24} />
+                             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Shared by your Recruiter</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {sharedJobs.map(job => (
+                                <div key={job.id} className="bg-white p-10 rounded-[3rem] border border-brand-200 shadow-xl hover:shadow-2xl hover:border-brand-500 transition-all group flex flex-col md:flex-row items-center gap-10">
+                                     <div className="w-20 h-20 bg-slate-950 text-white rounded-[2rem] flex items-center justify-center font-black text-3xl shrink-0 group-hover:scale-110 transition-transform">
+                                        {job.company[0]}
+                                     </div>
+                                     <div className="flex-1 text-center md:text-left">
+                                         <h4 className="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-2 leading-none">{job.title}</h4>
+                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">{job.company} • Priority Selection</p>
+                                         <button onClick={() => handleStartTailoring(job)} className="px-8 py-3 bg-brand-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-700 shadow-xl shadow-brand-600/20 transition-all">
+                                             Initiate Forge
+                                         </button>
+                                     </div>
+                                     <div className="text-emerald-500 font-black text-xl tracking-tighter text-right shrink-0">
+                                         <Star size={18} className="fill-emerald-500 inline mr-2" />
+                                         {job.matchScore}%
+                                     </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         )}
 
@@ -298,6 +336,28 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {sharedJobs.map(job => (
+                        <div key={`shared-${job.id}`} className="bg-brand-50/30 p-10 rounded-[3rem] border-2 border-brand-200 shadow-xl hover:shadow-2xl hover:border-brand-500 transition-all group relative overflow-hidden flex flex-col h-full ring-4 ring-brand-100/50">
+                             <div className="absolute top-4 right-6 text-brand-600">
+                                <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-brand-100 shadow-sm">
+                                    <Share2 size={12} /> <span className="text-[8px] font-black uppercase tracking-widest">Priority Shared</span>
+                                </div>
+                             </div>
+                            <div className="flex items-center gap-6 mb-10">
+                                <div className="w-16 h-16 bg-brand-600 text-white rounded-[1.5rem] flex items-center justify-center font-black text-3xl shadow-xl group-hover:scale-110 transition-transform">
+                                    {job.company[0]}
+                                </div>
+                                <div>
+                                    <h4 className="text-2xl font-black text-slate-900 uppercase tracking-tight leading-none mb-2">{job.company}</h4>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Recruiter Pick</p>
+                                </div>
+                            </div>
+                            <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tighter mb-8 flex-1 group-hover:text-brand-600 transition-colors leading-none">{job.title}</h3>
+                            <button onClick={() => handleStartTailoring(job)} className="w-full py-5 bg-brand-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.3em] shadow-2xl hover:bg-brand-700 transition-all flex items-center justify-center gap-3 active:scale-95">
+                                Initiate Forge <ArrowUpRight size={18} />
+                            </button>
+                        </div>
+                    ))}
                     {recommendedJobs.map((job, idx) => (
                         <div key={job.id} className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-brand-500 transition-all group relative overflow-hidden flex flex-col h-full">
                             <div className="flex items-center gap-6 mb-10">
