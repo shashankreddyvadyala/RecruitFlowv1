@@ -47,29 +47,29 @@ const dataSets: Record<TimeRange, { name: string; candidates: number }[]> = {
 };
 
 const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
-  <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col justify-between relative group hover:shadow-2xl hover:border-brand-100 transition-all duration-500 hover:-translate-y-1">
+  <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between group hover:shadow-md transition-all">
     <div className="flex items-start justify-between mb-6">
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">{title}</p>
+          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{title}</p>
           <div className="relative group/tooltip">
             <HelpCircle size={12} className="text-slate-300 cursor-help" />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 p-3 bg-slate-950 text-white text-[10px] rounded-2xl opacity-0 group-hover/tooltip:opacity-100 transition-all pointer-events-none z-[100] font-bold uppercase tracking-wider text-center shadow-2xl leading-relaxed">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-[100] font-medium shadow-xl">
               {description}
             </div>
           </div>
         </div>
-        <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{value}</h3>
+        <h3 className="text-4xl font-bold text-slate-900 tracking-tight leading-none">{value}</h3>
       </div>
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 shadow-xl ${color} text-white`}>
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${color} text-white shadow-sm`}>
         {icon}
       </div>
     </div>
     <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-50">
-        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : trend === 'down' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
+        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : trend === 'down' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
             {sub}
         </span>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Temporal Variance</span>
+        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">this period</span>
     </div>
   </div>
 );
@@ -82,7 +82,6 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
   const { interviews, candidates } = useStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('7D');
   
-  // Dynamic scaling based on the selected window
   const stats = useMemo(() => {
     let multiplier = 1;
     switch(timeRange) {
@@ -95,7 +94,7 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
     return {
         pool: (candidates.length * multiplier).toLocaleString(),
         active: Math.floor(candidates.filter(c => c.status === 'Active').length * (multiplier * 0.8)).toString(),
-        syncs: (interviews.length * multiplier).toString(),
+        interviews: (interviews.length * multiplier).toString(),
         trend: timeRange === '7D' ? '+12%' : timeRange === '30D' ? '+24%' : '+68%'
     };
   }, [timeRange, candidates, interviews]);
@@ -110,19 +109,19 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-           <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tight">Recruiter Mission Control</h2>
-           <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Real-time Performance & Operations Interface</p>
+           <h2 className="text-3xl font-bold text-slate-900">Recruiter Dashboard</h2>
+           <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">Real-time performance metrics</p>
         </div>
         
-        <div className="flex items-center gap-4 bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
            {(['7D', '30D', '6M', '12M'] as TimeRange[]).map((range) => (
              <button
                key={range}
                onClick={() => setTimeRange(range)}
-               className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                 timeRange === range ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'text-slate-400 hover:text-slate-600'
+               className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+                 timeRange === range ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'
                }`}
              >
                {range}
@@ -133,48 +132,40 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <StatCard 
-          title="Candidate Pool" 
+          title="Total Pool" 
           value={stats.pool} 
           sub={stats.trend} 
           trend="up"
           icon={<Users size={24} />} 
           color="bg-slate-900" 
-          description="Total candidate ingestion across the specified temporal window."
+          description="Total number of candidates in the system."
         />
         <StatCard 
-          title="Active Bench" 
+          title="Active Candidates" 
           value={stats.active} 
-          sub="Locked" 
+          sub="Qualified" 
           trend="up"
           icon={<UserCheck size={24} />} 
           color="bg-emerald-500" 
-          description="Qualified operatives currently active and engaging with agency pipelines."
+          description="Candidates currently active in the hiring pipeline."
         />
         <StatCard 
-          title="Scheduled Syncs" 
-          value={stats.syncs} 
-          sub="Sessions" 
+          title="Interviews" 
+          value={stats.interviews} 
+          sub="Scheduled" 
           trend="neutral"
           icon={<Calendar size={24} />} 
           color="bg-brand-600" 
-          description="Total interview transmissions scheduled or completed in this period."
+          description="Total interviews scheduled in this time range."
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8">
-             <TrendingUp size={100} className="text-slate-50 opacity-[0.03]" />
-          </div>
-          <div className="flex items-center justify-between mb-12 relative z-10">
+        <div className="lg:col-span-2 bg-white p-10 rounded-3xl shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between mb-12">
             <div>
-              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Strategic Signal</h3>
-              <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Candidate Ingestion Velocity</p>
-            </div>
-            <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
-               <span className="px-6 py-2 bg-white shadow-xl rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-900 border border-slate-100">
-                  Window: {timeRange}
-               </span>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Overview</p>
+              <h3 className="text-2xl font-bold text-slate-900 mt-1">Candidate Activity</h3>
             </div>
           </div>
           <div className="h-72">
@@ -182,62 +173,61 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
               <AreaChart data={dataSets[timeRange]}>
                 <defs>
                   <linearGradient id="colorCand" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#cbd5e1', fontSize: 10, fontWeight: 900}} dy={15} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#cbd5e1', fontSize: 10, fontWeight: 900}} dx={-10} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} dx={-10} />
                 <Tooltip 
-                  cursor={{stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '5 5'}}
-                  contentStyle={{borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)', padding: '20px'}}
-                  labelStyle={{fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px', marginBottom: '8px', letterSpacing: '0.1em'}}
+                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}}
+                  labelStyle={{fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px'}}
                 />
-                <Area type="monotone" dataKey="candidates" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCand)" strokeWidth={4} />
+                <Area type="monotone" dataKey="candidates" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCand)" strokeWidth={3} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group">
+        <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div>
-              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Daily Mission</h3>
-              <p className="text-2xl font-black text-slate-900 mt-1 uppercase tracking-tight">Upcoming Syncs</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Today</p>
+              <h3 className="text-2xl font-bold text-slate-900 mt-1">Interviews</h3>
             </div>
-            <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl group-hover:rotate-12 transition-transform">
-                <Calendar size={24} />
+            <div className="p-3 bg-brand-50 text-brand-600 rounded-xl">
+                <Calendar size={20} />
             </div>
           </div>
           
           <div className="flex-1 space-y-4">
             {todayInterviews.length > 0 ? (
                 todayInterviews.map((int) => (
-                    <div key={int.id} className="p-5 bg-slate-50 rounded-[1.5rem] border border-slate-100 group/item hover:bg-slate-100 transition-all">
-                        <div className="flex justify-between items-start mb-2">
-                            <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest">
+                    <div key={int.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer" onClick={onViewCalendar}>
+                        <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-bold text-brand-600 uppercase">
                                 {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
-                            {int.location ? <Video size={14} className="text-slate-400" /> : <PhoneCall size={14} className="text-slate-400" />}
+                            {int.location ? <Video size={12} className="text-slate-400" /> : <PhoneCall size={12} className="text-slate-400" />}
                         </div>
-                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight truncate">{int.candidateName}</h4>
-                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mt-1 truncate">{int.jobTitle}</p>
+                        <h4 className="text-sm font-bold text-slate-900 truncate">{int.candidateName}</h4>
+                        <p className="text-[9px] font-medium text-slate-500 uppercase truncate">{int.jobTitle}</p>
                     </div>
                 ))
             ) : (
-                <div className="flex flex-col items-center justify-center h-full py-10 opacity-50 grayscale">
+                <div className="flex flex-col items-center justify-center h-full py-10 opacity-50">
                     <Info size={32} className="text-slate-200 mb-4" />
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Zero missions for today</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase">No interviews today</p>
                 </div>
             )}
           </div>
           
           <button 
             onClick={onViewCalendar}
-            className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-3"
+            className="mt-8 w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
           >
-             View Full Deck <ArrowUpRight size={14} />
+             View Calendar <ArrowUpRight size={14} />
           </button>
         </div>
       </div>
