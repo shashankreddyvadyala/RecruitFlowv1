@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Job, Candidate, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, UserRole, AgencyBranding, Interview, Notification } from '../types';
+import { Job, Candidate, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, UserRole, AgencyBranding, Interview, Notification, Skill } from '../types';
 import * as Constants from '../constants';
 
 interface StoreContextType {
@@ -177,18 +177,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             skills: p.skills,
             lastActivity: 'Sourced: Elite Bench (Preference 1)',
             avatarUrl: p.avatarUrl,
-            notes: 'SYSTEM PRIORITY 1: This candidate is ON BENCH and actively seeking a new mission.'
+            notes: 'SYSTEM PRIORITY 1: This candidate is ON BENCH and actively seeking a new mission.',
+            isOpenToWork: true // Sourced from bench are always open to work
         });
     });
 
     // Map Active Pool (Preference 2)
     poolMatches.slice(0, 2).forEach(c => {
+        const priorityBonus = c.isOpenToWork ? 10 : 0;
         finalCandidates.push({
             ...c,
             id: `sourced_pool_${Date.now()}_${c.id}`,
-            matchScore: 82 + Math.floor(Math.random() * 8),
+            matchScore: Math.min(100, 82 + Math.floor(Math.random() * 8) + priorityBonus),
             lastActivity: 'Sourced: Passive Pool (Preference 2)',
-            notes: (c.notes || '') + '\nSYSTEM PRIORITY 2: Re-sourced from passive agency pool.'
+            notes: (c.notes || '') + `\nSYSTEM PRIORITY 2: Re-sourced from passive agency pool.${c.isOpenToWork ? ' [PRIORITY: ACTIVE SEEKER]' : ''}`
         });
     });
 
@@ -203,7 +205,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             status: 'New',
             stageId: 's1',
             matchScore: 71 + Math.floor(Math.random() * 9),
-            skills: ['Sourced via Neural Search'],
+            skills: [{ name: 'Sourced via Neural Search', years: 0 }],
             lastActivity: 'Market Discovery (Tier 3)',
             avatarUrl: `https://picsum.photos/100/100?u=${Date.now()}`
         });

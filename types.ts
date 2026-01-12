@@ -31,6 +31,25 @@ export interface OptimizationInsight {
   severity: 'high' | 'medium' | 'low';
 }
 
+export interface Education {
+  degree: string;
+  institution: string;
+  year: string;
+}
+
+export interface Skill {
+  name: string;
+  years: number;
+}
+
+export interface ResumeFile {
+  id: string;
+  name: string;
+  url: string;
+  updatedAt: string;
+  type: 'PDF' | 'DOCX';
+}
+
 export interface Candidate {
   id: string;
   firstName: string;
@@ -41,7 +60,7 @@ export interface Candidate {
   stageId: string;
   matchScore: number; 
   aiSummary?: string;
-  skills: string[];
+  skills: Skill[];
   lastActivity: string;
   avatarUrl: string;
   companyId?: string;
@@ -49,6 +68,11 @@ export interface Candidate {
   notes?: string; 
   candidateTimezone?: string;
   availability?: string;
+  isOpenToWork?: boolean;
+
+  // Added Fields
+  yearsOfExperience?: number;
+  education?: Education[];
 
   // Global Compliance
   htsClassification?: string;
@@ -61,9 +85,7 @@ export interface Candidate {
   salaryExpectation?: string;
 
   sharedJobIds?: string[]; 
-  resumeName?: string;
-  resumeUrl?: string;
-  resumeUpdatedAt?: string;
+  resumes?: ResumeFile[];
 }
 
 export interface Job {
@@ -80,7 +102,7 @@ export interface Job {
 
 export interface Activity {
   id: string;
-  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload' | 'JobShared' | 'Optimization';
+  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload' | 'JobShared' | 'Optimization' | 'JobApplication';
   subject: string;
   content: string;
   timestamp: string;
@@ -132,7 +154,7 @@ export interface CandidateProfile {
   name: string;
   title: string;
   experience: number; 
-  skills: string[];
+  skills: Skill[];
   location: string;
   bio: string;
   status: 'Bench' | 'Placed' | 'Interviewing';
@@ -155,11 +177,11 @@ export interface RecruiterStats {
   name: string;
   avatarUrl: string;
   placements: number;
-  activityScore: number; 
-  emailsSent: number;
-  callsLogged: number;
+  applications: number; // Candidate submissions
+  stageProgressions: number; // Movements within a pipeline
   conversionRate: number; 
   activeJobs: number;
+  activityScore: number; 
 }
 
 export interface AgencyBranding {

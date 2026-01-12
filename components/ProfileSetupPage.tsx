@@ -1,8 +1,7 @@
 
 import React, { useState } from 'react';
-/* Added missing Zap and Clock icons to the lucide-react import list */
-import { User, Briefcase, FileText, Upload, Sparkles, ArrowRight, Camera, CheckCircle2, Star, MapPin, Globe, Compass, Timer, DollarSign, Zap, Clock } from 'lucide-react';
-import { UserRole } from '../types';
+import { User, Briefcase, FileText, Upload, Sparkles, ArrowRight, Camera, CheckCircle2, Star, MapPin, Globe, Compass, Timer, DollarSign, Zap, Clock, GraduationCap, Award, Plus, Trash2 } from 'lucide-react';
+import { UserRole, Education, Skill } from '../types';
 import { useStore } from '../context/StoreContext';
 
 interface ProfileSetupPageProps {
@@ -17,7 +16,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
     name: '',
     title: '',
     bio: '',
-    skills: '',
+    skills: [] as Skill[],
     experience: '5',
     avatarUrl: `https://picsum.photos/200/200?u=${Math.random()}`,
     // New Preference Fields
@@ -26,8 +25,12 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
     employmentType: 'Full-time',
     workMode: 'Remote',
     salaryExpectation: '',
-    availability: 'Immediate'
+    availability: 'Immediate',
+    education: [] as Education[]
   });
+
+  const [newSkill, setNewSkill] = useState({ name: '', years: '' });
+  const [newEdu, setNewEdu] = useState<Education>({ institution: '', degree: '', year: '' });
 
   const totalSteps = role === UserRole.Candidate ? 4 : 2;
 
@@ -40,10 +43,37 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
     if (step > 1) setStep(step - 1);
   };
 
+  const addSkill = () => {
+    if (newSkill.name) {
+        setFormData({ ...formData, skills: [...formData.skills, { name: newSkill.name, years: parseInt(newSkill.years || '0') }] });
+        setNewSkill({ name: '', years: '' });
+    }
+  };
+
+  const removeSkill = (index: number) => {
+    const updated = [...formData.skills];
+    updated.splice(index, 1);
+    setFormData({ ...formData, skills: updated });
+  };
+
+  const addEducation = () => {
+    if (newEdu.institution && newEdu.degree) {
+        setFormData({ ...formData, education: [...formData.education, newEdu] });
+        setNewEdu({ institution: '', degree: '', year: '' });
+    }
+  };
+
+  const removeEducation = (index: number) => {
+    const updated = [...formData.education];
+    updated.splice(index, 1);
+    setFormData({ ...formData, education: updated });
+  };
+
   const isStepValid = () => {
     if (step === 1) return formData.name.length > 2 && formData.title.length > 2;
     if (step === 2) return formData.bio.length > 10;
     if (role === UserRole.Candidate && step === 3) return formData.preferredRoles.length > 2;
+    if (role === UserRole.Candidate && step === 4) return formData.skills.length > 0;
     return true;
   };
 
@@ -75,7 +105,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
               {role === UserRole.Candidate && (
                 <>
                   <StepIndicator num={3} label="Career Goals" active={step === 3} completed={step > 3} />
-                  <StepIndicator num={4} label="Skills & Resume" active={step === 4} completed={step > 4} />
+                  <StepIndicator num={4} label="Skills & Education" active={step === 4} completed={step > 4} />
                 </>
               )}
             </div>
@@ -255,26 +285,114 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
             {((role === UserRole.Candidate && step === 4) || (role !== UserRole.Candidate && step === 3)) && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Skills & Assets</h3>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Experience & Education</h3>
                 <p className="text-slate-500 text-sm mb-8 font-medium">Final details to complete your application readiness.</p>
                 
-                <div className="space-y-6 max-w-md mx-auto">
+                <div className="space-y-8 max-w-md mx-auto">
                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Skills (Keywords)</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                         <Award size={14} /> Overall Industry Experience (Years)
+                      </label>
                       <input 
-                        value={formData.skills}
-                        onChange={e => setFormData({...formData, skills: e.target.value})}
+                        type="number"
+                        value={formData.experience}
+                        onChange={e => setFormData({...formData, experience: e.target.value})}
                         className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
-                        placeholder="React, TypeScript, Figma..."
                       />
                    </div>
-                   
-                   <div className="p-8 border-2 border-dashed border-slate-200 rounded-[2rem] text-center hover:border-brand-500 transition-colors group cursor-pointer bg-slate-50/50">
-                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm group-hover:scale-110 transition-transform">
-                         <Upload className="text-slate-400 group-hover:text-brand-600" />
+
+                   {/* NEW: Granular Skills Experience */}
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                         <Zap size={14} /> Skills & Technology Experience
+                      </label>
+                      <div className="space-y-3 mb-4">
+                        {formData.skills.map((skill, idx) => (
+                            <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center group">
+                                <div>
+                                    <p className="text-xs font-black text-slate-900 uppercase leading-none">{skill.name}</p>
+                                    <p className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mt-1">{skill.years} Years Exp</p>
+                                </div>
+                                <button onClick={() => removeSkill(idx)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        ))}
                       </div>
-                      <h4 className="font-black text-xs uppercase tracking-widest text-slate-900">Upload CV / Resume</h4>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1">PDF or Word (Max 5MB)</p>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                         <div className="grid grid-cols-3 gap-2">
+                            <input 
+                                placeholder="Skill Name" 
+                                className="col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                value={newSkill.name}
+                                onChange={e => setNewSkill({...newSkill, name: e.target.value})}
+                            />
+                            <input 
+                                placeholder="Years" 
+                                type="number"
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                value={newSkill.years}
+                                onChange={e => setNewSkill({...newSkill, years: e.target.value})}
+                            />
+                         </div>
+                         <button 
+                            type="button"
+                            onClick={addSkill}
+                            className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
+                         >
+                            <Plus size={14} /> Add Skill Record
+                         </button>
+                      </div>
+                   </div>
+
+                   {/* Education Background */}
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
+                         <GraduationCap size={14} /> Education Background
+                      </label>
+                      <div className="space-y-3 mb-4">
+                        {formData.education.map((edu, idx) => (
+                            <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center group">
+                                <div>
+                                    <p className="text-xs font-black text-slate-900 leading-none uppercase">{edu.degree}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{edu.institution} • {edu.year}</p>
+                                </div>
+                                <button onClick={() => removeEducation(idx)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        ))}
+                      </div>
+                      
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                         <input 
+                            placeholder="Degree (e.g. B.S. Comp Sci)" 
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                            value={newEdu.degree}
+                            onChange={e => setNewEdu({...newEdu, degree: e.target.value})}
+                         />
+                         <div className="grid grid-cols-2 gap-2">
+                            <input 
+                                placeholder="Institution" 
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                value={newEdu.institution}
+                                onChange={e => setNewEdu({...newEdu, institution: e.target.value})}
+                            />
+                            <input 
+                                placeholder="Year" 
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                value={newEdu.year}
+                                onChange={e => setNewEdu({...newEdu, year: e.target.value})}
+                            />
+                         </div>
+                         <button 
+                            type="button"
+                            onClick={addEducation}
+                            className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
+                         >
+                            <Plus size={14} /> Add Education Node
+                         </button>
+                      </div>
                    </div>
                 </div>
               </div>

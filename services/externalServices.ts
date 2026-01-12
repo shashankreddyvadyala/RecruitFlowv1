@@ -62,7 +62,14 @@ export const ResumeParserService = {
         name: file.name.split('.')[0].replace(/[_-]/g, ' '),
         title: 'Senior Software Engineer', 
         experience: Math.floor(Math.random() * 8) + 4,
-        skills: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'AWS'],
+        // Fix: Map string values to Skill objects to match the Skill[] type definition
+        skills: [
+          { name: 'React', years: 5 },
+          { name: 'TypeScript', years: 4 },
+          { name: 'Node.js', years: 4 },
+          { name: 'PostgreSQL', years: 3 },
+          { name: 'AWS', years: 2 }
+        ],
         location: 'Remote',
         bio: 'Extraction summary: Full-stack engineer with deep expertise in distributed systems and modern UI frameworks.',
         status: 'Bench',

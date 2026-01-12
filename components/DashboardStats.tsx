@@ -9,49 +9,22 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Users, Calendar, ArrowUpRight, Video, PhoneCall, UserCheck, HelpCircle, Info, TrendingUp } from 'lucide-react';
+import { Send, Zap, Trophy, HelpCircle, Info, Calendar, ArrowUpRight, TrendingUp } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
-type TimeRange = '7D' | '30D' | '6M' | '12M';
+type TimeRange = '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
-const dataSets: Record<TimeRange, { name: string; candidates: number }[]> = {
-  '7D': [
-    { name: 'MON', candidates: 40 },
-    { name: 'TUE', candidates: 30 },
-    { name: 'WED', candidates: 65 },
-    { name: 'THU', candidates: 45 },
-    { name: 'FRI', candidates: 90 },
-    { name: 'SAT', candidates: 20 },
-    { name: 'SUN', candidates: 15 },
-  ],
-  '30D': [
-    { name: 'WEEK 1', candidates: 120 },
-    { name: 'WEEK 2', candidates: 210 },
-    { name: 'WEEK 3', candidates: 180 },
-    { name: 'WEEK 4', candidates: 250 },
-  ],
-  '6M': [
-    { name: 'JAN', candidates: 400 },
-    { name: 'FEB', candidates: 520 },
-    { name: 'MAR', candidates: 480 },
-    { name: 'APR', candidates: 610 },
-    { name: 'MAY', candidates: 750 },
-    { name: 'JUN', candidates: 820 },
-  ],
-  '12M': [
-    { name: 'Q1', candidates: 1400 },
-    { name: 'Q2', candidates: 1800 },
-    { name: 'Q3', candidates: 2100 },
-    { name: 'Q4', candidates: 2800 },
-  ]
-};
+const BASE_CHART_DATA = [
+  { name: 'P1', value: 12 }, { name: 'P2', value: 18 }, { name: 'P3', value: 15 },
+  { name: 'P4', value: 22 }, { name: 'P5', value: 30 }, { name: 'P6', value: 25 }, { name: 'P7', value: 35 },
+];
 
 const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
   <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between group hover:shadow-md transition-all">
     <div className="flex items-start justify-between mb-6">
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{title}</p>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{title}</p>
           <div className="relative group/tooltip">
             <HelpCircle size={12} className="text-slate-300 cursor-help" />
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-[100] font-medium shadow-xl">
@@ -59,17 +32,17 @@ const StatCard = ({ title, value, sub, icon, color, description, trend }: any) =
             </div>
           </div>
         </div>
-        <h3 className="text-4xl font-bold text-slate-900 tracking-tight leading-none">{value}</h3>
+        <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none uppercase">{value}</h3>
       </div>
       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${color} text-white shadow-sm`}>
         {icon}
       </div>
     </div>
     <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-50">
-        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : trend === 'down' ? 'bg-orange-50 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
+        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
             {sub}
         </span>
-        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">this period</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Growth Velocity</span>
     </div>
   </div>
 );
@@ -79,52 +52,53 @@ interface DashboardStatsProps {
 }
 
 const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
-  const { interviews, candidates } = useStore();
-  const [timeRange, setTimeRange] = useState<TimeRange>('7D');
+  const { interviews, recruiterStats } = useStore();
+  const [timeRange, setTimeRange] = useState<TimeRange>('1M');
+
+  const multipliers: Record<TimeRange, number> = {
+    '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
+  };
   
   const stats = useMemo(() => {
-    let multiplier = 1;
-    switch(timeRange) {
-        case '30D': multiplier = 4; break;
-        case '6M': multiplier = 24; break;
-        case '12M': multiplier = 48; break;
-        default: multiplier = 1;
-    }
+    const mult = multipliers[timeRange];
+    const baseStats = recruiterStats.reduce((acc, curr) => ({
+        apps: acc.apps + curr.applications,
+        moves: acc.moves + curr.stageProgressions,
+        hires: acc.hires + curr.placements
+    }), { apps: 0, moves: 0, hires: 0 });
 
     return {
-        pool: (candidates.length * multiplier).toLocaleString(),
-        active: Math.floor(candidates.filter(c => c.status === 'Active').length * (multiplier * 0.8)).toString(),
-        interviews: (interviews.length * multiplier).toString(),
-        trend: timeRange === '7D' ? '+12%' : timeRange === '30D' ? '+24%' : '+68%'
+        submissions: Math.round(baseStats.apps * mult).toLocaleString(),
+        movements: Math.round(baseStats.moves * mult).toLocaleString(),
+        placements: Math.round(baseStats.hires * mult).toLocaleString(),
+        trend: timeRange === '7D' ? '+4%' : '+18%',
+        chartData: BASE_CHART_DATA.map(d => ({ ...d, value: Math.round(d.value * mult) }))
     };
-  }, [timeRange, candidates, interviews]);
+  }, [timeRange, recruiterStats]);
 
-  const todayInterviews = useMemo(() => {
-    const todayStr = new Date().toDateString();
-    return interviews
-      .filter(i => new Date(i.startTime).toDateString() === todayStr)
-      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-      .slice(0, 3);
-  }, [interviews]);
+  const timeOptions: { label: string, value: TimeRange }[] = [
+    { label: '7D', value: '7D' }, { label: '1M', value: '1M' }, { label: '3M', value: '3M' },
+    { label: '6M', value: '6M' }, { label: '1Y', value: '1Y' }, { label: 'All', value: 'ALL' },
+  ];
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-           <h2 className="text-3xl font-bold text-slate-900">Recruiter Dashboard</h2>
-           <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">Real-time performance metrics</p>
+           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Recruiter Dashboard</h2>
+           <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">Operational Performance Hub</p>
         </div>
         
-        <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-           {(['7D', '30D', '6M', '12M'] as TimeRange[]).map((range) => (
+        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto max-w-full">
+           {timeOptions.map((opt) => (
              <button
-               key={range}
-               onClick={() => setTimeRange(range)}
-               className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
-                 timeRange === range ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'
+               key={opt.value}
+               onClick={() => setTimeRange(opt.value)}
+               className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                 timeRange === opt.value ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'
                }`}
              >
-               {range}
+               {opt.label}
              </button>
            ))}
         </div>
@@ -132,31 +106,31 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <StatCard 
-          title="Total Pool" 
-          value={stats.pool} 
+          title="Total Submissions" 
+          value={stats.submissions} 
           sub={stats.trend} 
           trend="up"
-          icon={<Users size={24} />} 
+          icon={<Send size={24} />} 
           color="bg-slate-900" 
-          description="Total number of candidates in the system."
+          description="Total job applications submitted (Score weight: 2pt)."
         />
         <StatCard 
-          title="Active Candidates" 
-          value={stats.active} 
-          sub="Qualified" 
-          trend="up"
-          icon={<UserCheck size={24} />} 
-          color="bg-emerald-500" 
-          description="Candidates currently active in the hiring pipeline."
-        />
-        <StatCard 
-          title="Interviews" 
-          value={stats.interviews} 
-          sub="Scheduled" 
+          title="Pipeline Movements" 
+          value={stats.movements} 
+          sub="Stable" 
           trend="neutral"
-          icon={<Calendar size={24} />} 
-          color="bg-brand-600" 
-          description="Total interviews scheduled in this time range."
+          icon={<Zap size={24} />} 
+          color="bg-purple-600" 
+          description="Successful stage progressions (Score weight: 10pt)."
+        />
+        <StatCard 
+          title="Confirmed Hires" 
+          value={stats.placements} 
+          sub="+12%" 
+          trend="up"
+          icon={<Trophy size={24} />} 
+          color="bg-emerald-600" 
+          description="Total successful candidate placements (Score weight: 50pt)."
         />
       </div>
 
@@ -164,27 +138,31 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
         <div className="lg:col-span-2 bg-white p-10 rounded-3xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-12">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Overview</p>
-              <h3 className="text-2xl font-bold text-slate-900 mt-1">Candidate Activity</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dynamic Range Tracking</p>
+              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Historical Momentum</h3>
+            </div>
+            <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-brand-500 rounded-full"></div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aggregate Score Profile</span>
             </div>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dataSets[timeRange]}>
+              <AreaChart data={stats.chartData}>
                 <defs>
-                  <linearGradient id="colorCand" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} dx={-10} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 900}} dy={15} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 900}} dx={-10} />
                 <Tooltip 
-                  contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}}
-                  labelStyle={{fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px'}}
+                  contentStyle={{borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)', padding: '20px'}}
+                  labelStyle={{fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px'}}
                 />
-                <Area type="monotone" dataKey="candidates" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCand)" strokeWidth={3} />
+                <Area type="monotone" dataKey="value" stroke="#3b82f6" fillOpacity={1} fill="url(#colorValue)" strokeWidth={4} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -193,8 +171,8 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
         <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Today</p>
-              <h3 className="text-2xl font-bold text-slate-900 mt-1">Interviews</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Next Events</p>
+              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Interviews</h3>
             </div>
             <div className="p-3 bg-brand-50 text-brand-600 rounded-xl">
                 <Calendar size={20} />
@@ -202,32 +180,24 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           </div>
           
           <div className="flex-1 space-y-4">
-            {todayInterviews.length > 0 ? (
-                todayInterviews.map((int) => (
-                    <div key={int.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer" onClick={onViewCalendar}>
-                        <div className="flex justify-between items-start mb-1">
-                            <span className="text-[10px] font-bold text-brand-600 uppercase">
-                                {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                            {int.location ? <Video size={12} className="text-slate-400" /> : <PhoneCall size={12} className="text-slate-400" />}
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-900 truncate">{int.candidateName}</h4>
-                        <p className="text-[9px] font-medium text-slate-500 uppercase truncate">{int.jobTitle}</p>
+            {interviews.slice(0, 3).map((int) => (
+                <div key={int.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer" onClick={onViewCalendar}>
+                    <div className="flex justify-between items-start mb-1">
+                        <span className="text-[10px] font-black text-brand-600 uppercase tracking-tighter">
+                            {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                     </div>
-                ))
-            ) : (
-                <div className="flex flex-col items-center justify-center h-full py-10 opacity-50">
-                    <Info size={32} className="text-slate-200 mb-4" />
-                    <p className="text-xs font-bold text-slate-400 uppercase">No interviews today</p>
+                    <h4 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{int.candidateName}</h4>
+                    <p className="text-[9px] font-bold text-slate-500 uppercase truncate tracking-widest">{int.jobTitle}</p>
                 </div>
-            )}
+            ))}
           </div>
           
           <button 
             onClick={onViewCalendar}
-            className="mt-8 w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+            className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
           >
-             View Calendar <ArrowUpRight size={14} />
+             View Full Calendar <ArrowUpRight size={14} />
           </button>
         </div>
       </div>

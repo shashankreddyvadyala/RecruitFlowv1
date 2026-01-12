@@ -21,10 +21,10 @@ export const MOCK_RECRUITER_STATS: RecruiterStats[] = [
     id: 'r1', 
     name: 'Alex Morgan', 
     placements: 12, 
+    applications: 145,
+    stageProgressions: 88,
     activityScore: 94, 
     avatarUrl: 'https://picsum.photos/100/100?random=20',
-    emailsSent: 1240,
-    callsLogged: 450,
     conversionRate: 22,
     activeJobs: 8
   },
@@ -32,21 +32,21 @@ export const MOCK_RECRUITER_STATS: RecruiterStats[] = [
     id: 'r2', 
     name: 'Sarah Jenkins', 
     placements: 9, 
-    activityScore: 88, 
+    applications: 110,
+    stageProgressions: 64,
+    activityScore: 82, 
     avatarUrl: 'https://picsum.photos/100/100?random=21',
-    emailsSent: 980,
-    callsLogged: 320,
     conversionRate: 18,
     activeJobs: 5
   },
   { 
     id: 'r3', 
     name: 'Tom Harris', 
-    placements: 6, 
-    activityScore: 72, 
+    placements: 4, 
+    applications: 190,
+    stageProgressions: 32,
+    activityScore: 58, 
     avatarUrl: 'https://picsum.photos/100/100?random=22',
-    emailsSent: 750,
-    callsLogged: 180,
     conversionRate: 14,
     activeJobs: 4
   }
@@ -141,7 +141,12 @@ export const MOCK_CANDIDATES: Candidate[] = [
     status: 'Active',
     stageId: 's3',
     matchScore: 92,
-    skills: ['React', 'TypeScript', 'Node.js', 'AWS'],
+    skills: [
+      { name: 'React', years: 6 },
+      { name: 'TypeScript', years: 5 },
+      { name: 'Node.js', years: 4 },
+      { name: 'AWS', years: 3 }
+    ],
     lastActivity: 'AI Call completed 2h ago',
     avatarUrl: 'https://picsum.photos/100/100?random=1',
     aiSummary: 'Strong technical depth in frontend architecture. Communication score 9/10.',
@@ -152,7 +157,16 @@ export const MOCK_CANDIDATES: Candidate[] = [
     employmentType: 'Full-time',
     workMode: 'Remote',
     salaryExpectation: '$180k - $210k',
-    availability: 'Immediate'
+    availability: 'Immediate',
+    yearsOfExperience: 8,
+    education: [
+      { degree: 'B.S. Computer Science', institution: 'UC Berkeley', year: '2016' },
+      { degree: 'M.S. Software Engineering', institution: 'Stanford University', year: '2018' }
+    ],
+    resumes: [
+      { id: 'res_1', name: 'sarah_chen_cv_2025.pdf', url: '#', updatedAt: '2025-01-15T10:00:00Z', type: 'PDF' },
+      { id: 'res_2', name: 'sarah_chen_v1_legacy.pdf', url: '#', updatedAt: '2024-11-02T14:30:00Z', type: 'PDF' }
+    ]
   },
   {
     id: 'c2',
@@ -163,7 +177,11 @@ export const MOCK_CANDIDATES: Candidate[] = [
     status: 'Active',
     stageId: 's2',
     matchScore: 85,
-    skills: ['JavaScript', 'Vue', 'Firebase'],
+    skills: [
+      { name: 'JavaScript', years: 7 },
+      { name: 'Vue', years: 3 },
+      { name: 'Firebase', years: 2 }
+    ],
     lastActivity: 'Email opened 1d ago',
     avatarUrl: 'https://picsum.photos/100/100?random=2',
     aiSummary: 'Good generalist, but lacks specific TypeScript experience needed for senior role.',
@@ -174,7 +192,14 @@ export const MOCK_CANDIDATES: Candidate[] = [
     employmentType: 'Contract',
     workMode: 'Hybrid',
     salaryExpectation: '£600/day',
-    availability: '2 weeks notice'
+    availability: '2 weeks notice',
+    yearsOfExperience: 5,
+    education: [
+      { degree: 'B.A. Graphic Design', institution: 'University of Arts London', year: '2019' }
+    ],
+    resumes: [
+      { id: 'res_3', name: 'marcus_reynolds_cv.pdf', url: '#', updatedAt: '2025-02-10T09:00:00Z', type: 'PDF' }
+    ]
   },
   {
     id: 'c3',
@@ -185,7 +210,11 @@ export const MOCK_CANDIDATES: Candidate[] = [
     status: 'New',
     stageId: 's1',
     matchScore: 78,
-    skills: ['Figma', 'UI/UX', 'User Research'],
+    skills: [
+      { name: 'Figma', years: 5 },
+      { name: 'UI/UX', years: 6 },
+      { name: 'User Research', years: 3 }
+    ],
     lastActivity: 'Imported via LinkedIn',
     avatarUrl: 'https://picsum.photos/100/100?random=3',
     notes: 'Excellent portfolio. Previously worked at high-growth fintech startups.',
@@ -194,7 +223,14 @@ export const MOCK_CANDIDATES: Candidate[] = [
     employmentType: 'Full-time',
     workMode: 'On-site',
     salaryExpectation: '€95k+',
-    availability: '1 month notice'
+    availability: '1 month notice',
+    yearsOfExperience: 6,
+    education: [
+      { degree: 'B.Des. Interaction Design', institution: 'TU Delft', year: '2017' }
+    ],
+    resumes: [
+      { id: 'res_4', name: 'elena_vovas_portfolio_cv.pdf', url: '#', updatedAt: '2025-03-01T11:20:00Z', type: 'PDF' }
+    ]
   }
 ];
 
@@ -244,7 +280,12 @@ export const MOCK_TALENT_PROFILES: CandidateProfile[] = [
     name: 'James Wilson',
     title: 'Staff Software Engineer',
     experience: 8,
-    skills: ['Python', 'PyTorch', 'AWS', 'System Design'],
+    skills: [
+      { name: 'Python', years: 6 },
+      { name: 'PyTorch', years: 3 },
+      { name: 'AWS', years: 4 },
+      { name: 'System Design', years: 5 }
+    ],
     location: 'San Francisco, CA',
     bio: 'Ex-Google engineer specializing in scalable ML infrastructure.',
     status: 'Bench',
