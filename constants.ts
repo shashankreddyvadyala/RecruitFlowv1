@@ -15,7 +15,7 @@ export const INITIAL_BRANDING: AgencyBranding = {
   primaryColor: '#2563eb',
   tagline: 'Precision AI Recruiting',
   senderEmail: 'outreach@recruitflow.ai',
-  signature: 'Best regards,\nAlex Morgan\nLead Talent Partner'
+  signature: 'Best regards,\n\nAlex Morgan\nLead Talent Partner'
 };
 
 export const MOCK_RECRUITER_STATS: RecruiterStats[] = [

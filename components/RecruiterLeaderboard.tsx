@@ -2,28 +2,28 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { UserRole, RecruiterStats } from '../types';
-import { Trophy, Send, Zap, UserPlus, Trash2, X, ShieldCheck, Sparkles, HelpCircle, ArrowUpRight, TrendingUp, CalendarDays } from 'lucide-react';
+import { Trophy, Send, Zap, UserPlus, Trash2, X, ShieldCheck, Sparkles, HelpCircle, ArrowUpRight, TrendingUp, CalendarDays, Edit3, Save } from 'lucide-react';
 
 type TimeRange = '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const TeamManagement: React.FC = () => {
-  const { recruiterStats, userRole, addRecruiter, removeRecruiter } = useStore();
+  const { recruiterStats, userRole, addRecruiter, updateRecruiter, removeRecruiter, notify } = useStore();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingRecruiter, setEditingRecruiter] = useState<RecruiterStats | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
   const [newName, setNewName] = useState('');
+  const [newRole, setNewRole] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isOwner = userRole === UserRole.Owner;
 
-  // Performance-based scoring logic constants
   const POINTS = {
     PLACEMENT: 50,
     PROGRESSION: 10,
     APPLICATION: 2
   };
 
-  // Scaling multipliers based on time range to simulate historical data
   const multipliers: Record<TimeRange, number> = {
     '7D': 0.25,
     '1M': 1,
@@ -37,18 +37,14 @@ const TeamManagement: React.FC = () => {
     const rawScore = (stats.placements * POINTS.PLACEMENT) + 
                      (stats.stageProgressions * POINTS.PROGRESSION) + 
                      (stats.applications * POINTS.APPLICATION);
-    
-    // Target normalization (1500 points for a top performer in 1 month)
     const target = 1500 * multipliers[timeRange];
     return Math.min(100, Math.round((rawScore / target) * 100));
   };
 
   const sortedRecruiters = useMemo(() => {
     const multiplier = multipliers[timeRange];
-    
     return [...recruiterStats]
       .map(r => {
-        // Apply historical scaling for simulation
         const scaled = {
             ...r,
             placements: Math.round(r.placements * multiplier),
@@ -66,12 +62,12 @@ const TeamManagement: React.FC = () => {
   const handleAddRecruiter = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName) return;
-    
     setIsSubmitting(true);
     setTimeout(() => {
       const newRecruiter: RecruiterStats = {
         id: `rec_${Date.now()}`,
         name: newName,
+        jobTitle: newRole || 'Technical Recruiter',
         avatarUrl: `https://picsum.photos/100/100?u=${encodeURIComponent(newName)}`,
         placements: 0,
         applications: 0,
@@ -80,13 +76,35 @@ const TeamManagement: React.FC = () => {
         conversionRate: 0,
         activeJobs: 0
       };
-      
       addRecruiter(newRecruiter);
       setNewName('');
+      setNewRole('');
       setNewEmail('');
       setIsSubmitting(false);
       setShowAddModal(false);
+      notify("Recruiter Invited", `${newName} has been added to the team.`, "success");
     }, 800);
+  };
+
+  const handleEditRecruiter = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRecruiter) return;
+    setIsSubmitting(true);
+    setTimeout(() => {
+      updateRecruiter(editingRecruiter.id, {
+        name: newName,
+        jobTitle: newRole
+      });
+      setIsSubmitting(false);
+      setEditingRecruiter(null);
+      notify("Profile Updated", "Recruiter information successfully synchronized.", "success");
+    }, 600);
+  };
+
+  const openEditModal = (recruiter: RecruiterStats) => {
+    setEditingRecruiter(recruiter);
+    setNewName(recruiter.name);
+    setNewRole(recruiter.jobTitle || '');
   };
 
   const handleRemove = (id: string, name: string) => {
@@ -135,7 +153,7 @@ const TeamManagement: React.FC = () => {
 
             {isOwner && (
               <button 
-                onClick={() => setShowAddModal(true)}
+                onClick={() => { setShowAddModal(true); setNewName(''); setNewRole(''); }}
                 className="bg-brand-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-700 transition-all shadow-xl shadow-brand-600/10 flex items-center gap-2"
               >
                 <UserPlus size={16} /> Invite Recruiter
@@ -171,13 +189,7 @@ const TeamManagement: React.FC = () => {
                       </div>
                       <div>
                         <p className="font-black text-slate-900 uppercase tracking-tight">{recruiter.name}</p>
-                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-md ${
-                            recruiter.perfScore >= 90 ? 'bg-emerald-100 text-emerald-700' : 
-                            recruiter.perfScore >= 60 ? 'bg-blue-100 text-blue-700' : 
-                            'bg-slate-100 text-slate-500'
-                        }`}>
-                            {recruiter.perfScore >= 90 ? 'Elite Operative' : recruiter.perfScore >= 60 ? 'Consistent Closer' : 'Emerging Node'}
-                        </span>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{recruiter.jobTitle || 'Technical Recruiter'}</p>
                       </div>
                     </div>
                   </td>
@@ -227,6 +239,13 @@ const TeamManagement: React.FC = () => {
                   {isOwner && (
                     <td className="px-8 py-6 text-right">
                       <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all">
+                        <button 
+                            onClick={() => openEditModal(recruiter)}
+                            className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all" 
+                            title="Edit Role Information"
+                        >
+                            <Edit3 size={18} />
+                        </button>
                         <button className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all" title="View Dossier">
                             <ArrowUpRight size={18} />
                         </button>
@@ -289,6 +308,16 @@ const TeamManagement: React.FC = () => {
                    />
                 </div>
                 <div>
+                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Role / Job Title</label>
+                   <input 
+                    type="text"
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-900 placeholder:text-slate-300 shadow-inner"
+                    placeholder="e.g. Technical Sourcing Specialist"
+                   />
+                </div>
+                <div>
                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Professional Email</label>
                    <input 
                     type="email"
@@ -300,13 +329,6 @@ const TeamManagement: React.FC = () => {
                    />
                 </div>
                 
-                <div className="bg-brand-50 p-4 rounded-2xl border border-brand-100 flex gap-3">
-                    <Sparkles className="text-brand-600 shrink-0" size={18} />
-                    <p className="text-[10px] font-bold text-brand-700 leading-relaxed uppercase tracking-wide">
-                        Scores are dynamically recalculated based on closed placements and pipeline velocity.
-                    </p>
-                </div>
-
                 <button 
                   type="submit"
                   disabled={isSubmitting}
@@ -320,6 +342,68 @@ const TeamManagement: React.FC = () => {
                   ) : (
                     <>
                       Confirm & Invite Operative
+                    </>
+                  )}
+                </button>
+             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingRecruiter && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+             <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-lg">
+                    <Edit3 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Edit Profile</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Update Operative Metadata</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingRecruiter(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400">
+                  <X size={20} />
+                </button>
+             </div>
+             
+             <form onSubmit={handleEditRecruiter} className="p-8 space-y-6">
+                <div>
+                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Full Name</label>
+                   <input 
+                    type="text"
+                    required
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-900 shadow-inner"
+                   />
+                </div>
+                <div>
+                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Role / Job Title</label>
+                   <input 
+                    type="text"
+                    required
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-900 shadow-inner"
+                   />
+                </div>
+                
+                <button 
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full py-5 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-brand-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={18} /> Synchronize Profile
                     </>
                   )}
                 </button>

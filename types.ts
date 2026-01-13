@@ -146,6 +146,7 @@ export interface Placement {
 export interface RecruiterStats {
   id: string;
   name: string;
+  jobTitle?: string;
   placements: number;
   applications: number;
   stageProgressions: number;

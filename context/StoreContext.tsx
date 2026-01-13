@@ -35,6 +35,7 @@ interface StoreContextType {
   addInterview: (interview: Interview) => void;
   updateInterviewStatus: (id: string, status: Interview['status']) => void;
   addRecruiter: (recruiter: RecruiterStats) => void;
+  updateRecruiter: (id: string, updates: Partial<RecruiterStats>) => void;
   removeRecruiter: (id: string) => void;
   notify: (title: string, message: string, type?: Notification['type']) => void;
   removeNotification: (id: string) => void;
@@ -65,7 +66,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     fullName: 'Alex Morgan',
     jobTitle: 'Lead Talent Partner',
     email: 'alex.m@recruitflow.ai',
-    signature: 'Best regards,\nAlex Morgan\nLead Talent Partner',
+    signature: 'Best regards,\n\nAlex Morgan\nLead Talent Partner',
     avatarUrl: 'https://picsum.photos/100/100?u=me'
   });
   
@@ -152,6 +153,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addRecruiter = (recruiter: RecruiterStats) => setRecruiterStats(prev => [recruiter, ...prev]);
+  
+  const updateRecruiter = (id: string, updates: Partial<RecruiterStats>) => {
+    setRecruiterStats(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  };
+
   const removeRecruiter = (id: string) => setRecruiterStats(prev => prev.filter(r => r.id !== id));
 
   const sourceCandidatesForJob = async (externalJobId: string, onPhaseChange?: (phase: string) => void) => {
@@ -312,7 +318,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <StoreContext.Provider value={{
       userRole, branding, recruiterSettings, setUserRole, updateBranding, updateRecruiterSettings, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats, notifications,
-      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, shareJobWithCandidate, bulkShareJobs, respondToJobFeedback, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
+      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, shareJobWithCandidate, bulkShareJobs, respondToJobFeedback, addInterview, updateInterviewStatus, addRecruiter, updateRecruiter, removeRecruiter, notify, removeNotification
     }}>
       {children}
     </StoreContext.Provider>
