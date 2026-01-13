@@ -35,11 +35,25 @@ export interface Education {
   degree: string;
   institution: string;
   year: string;
+  fieldOfStudy?: string;
+  description?: string;
+}
+
+export interface WorkExperience {
+  id: string;
+  company: string;
+  title: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  current: boolean;
+  description: string;
 }
 
 export interface Skill {
   name: string;
   years: number;
+  category?: 'Technical' | 'Soft' | 'Tool';
 }
 
 export interface ResumeFile {
@@ -65,6 +79,7 @@ export interface Candidate {
   firstName: string;
   lastName: string;
   email: string;
+  phone?: string;
   role: string;
   status: string;
   stageId: string;
@@ -81,6 +96,7 @@ export interface Candidate {
   isOpenToWork?: boolean;
   yearsOfExperience?: number;
   education?: Education[];
+  workHistory?: WorkExperience[];
   htsClassification?: string;
   taxOptimizationApplied?: boolean;
   preferredRoles?: string[];
@@ -88,11 +104,20 @@ export interface Candidate {
   employmentType?: string;
   workMode?: string;
   salaryExpectation?: string;
+  noticePeriod?: string;
+  relocationWillingness?: 'None' | 'Local' | 'Regional' | 'International';
+  workAuthorization?: string;
+  industryPreference?: string[];
   resumes?: ResumeFile[];
   sharedJobIds?: string[];
   likedJobIds?: string[];
   rejectedJobIds?: string[];
   applicationHistory?: CandidateApplication[];
+  socialLinks?: {
+    linkedin?: string;
+    github?: string;
+    portfolio?: string;
+  };
 }
 
 export interface Job {
