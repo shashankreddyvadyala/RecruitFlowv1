@@ -1,8 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Candidate, GeneratedEmail, ApplicationMaterials, OptimizationInsight } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const isApiConfigured = () => !!process.env.API_KEY;
 
@@ -13,11 +10,14 @@ export const generateOutreachEmail = async (
 ): Promise<GeneratedEmail> => {
   if (!process.env.API_KEY) throw new Error("API Key missing");
 
+  // Fix: Initialize GoogleGenAI right before the API call to use the latest key
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const prompt = `
     Write a personalized cold outreach email to ${candidate.firstName} ${candidate.lastName} 
     for the ${candidate.role} position at ${companyName}.
     The sender is ${senderName}.
-    Candidate Skills: ${candidate.skills.join(', ')}.
+    Candidate Skills: ${candidate.skills.map(s => s.name).join(', ')}.
     Return JSON with 'subject' and 'body' fields.
   `;
 
@@ -46,9 +46,12 @@ export const getHiringOptimization = async (
 ): Promise<OptimizationInsight[]> => {
     if (!process.env.API_KEY) throw new Error("API Key missing");
 
+    // Fix: Initialize GoogleGenAI right before the API call
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     const prompt = `
       Analyze this international hire strategy.
-      Candidate: ${candidate.firstName} ${candidate.lastName} (${candidate.skills.join(', ')})
+      Candidate: ${candidate.firstName} ${candidate.lastName} (${candidate.skills.map(s => s.name).join(', ')})
       Job: ${jobTitle}
       Client Location: ${location}
 
@@ -95,6 +98,9 @@ export const suggestInterviewSlots = async (
 ): Promise<{ date: string; time: string; reason: string; score: number }[]> => {
   if (!process.env.API_KEY) throw new Error("API Key missing");
 
+  // Fix: Initialize GoogleGenAI right before the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const prompt = `Suggest 3 ideal interview slots for ${candidateName}.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -125,6 +131,9 @@ export const analyzeCandidate = async (
 ): Promise<{ score: number; summary: string; skills: string[] }> => {
   if (!process.env.API_KEY) throw new Error("API Key missing");
 
+  // Fix: Initialize GoogleGenAI right before the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const prompt = `Analyze this candidate resume against the job description.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -151,6 +160,9 @@ export const generateJobDescription = async (
   location: string, 
   keywords: string
 ): Promise<string> => {
+   // Fix: Initialize GoogleGenAI right before the API call
+   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
    const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Write a job description for ${title}.`
@@ -163,6 +175,9 @@ export const generateApplicationMaterials = async (
     jobTitle: string,
     company: string
 ): Promise<ApplicationMaterials> => {
+    // Fix: Initialize GoogleGenAI right before the API call
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Write materials for ${candidate.firstName} for ${jobTitle}.`,

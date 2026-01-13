@@ -50,6 +50,16 @@ export interface ResumeFile {
   type: 'PDF' | 'DOCX';
 }
 
+export interface CandidateApplication {
+  id: string;
+  jobTitle: string;
+  company: string;
+  status: 'Hired' | 'Rejected' | 'Withdrawn' | 'Offer' | 'In Progress';
+  appliedDate: string;
+  outcomeDate?: string;
+  notes: string; // The "Reason" for the outcome
+}
+
 export interface Candidate {
   id: string;
   firstName: string;
@@ -82,6 +92,7 @@ export interface Candidate {
   sharedJobIds?: string[];
   likedJobIds?: string[];
   rejectedJobIds?: string[];
+  applicationHistory?: CandidateApplication[];
 }
 
 export interface Job {

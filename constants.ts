@@ -169,7 +169,26 @@ export const MOCK_CANDIDATES: Candidate[] = [
       { id: 'res_1', name: 'sarah_chen_cv_2025.pdf', url: '#', updatedAt: '2025-01-15T10:00:00Z', type: 'PDF' },
       { id: 'res_2', name: 'sarah_chen_v1_legacy.pdf', url: '#', updatedAt: '2024-11-02T14:30:00Z', type: 'PDF' }
     ],
-    isOpenToWork: true
+    isOpenToWork: true,
+    applicationHistory: [
+      {
+        id: 'hist_1',
+        jobTitle: 'Senior Frontend Architect',
+        company: 'Stripe',
+        status: 'Rejected',
+        appliedDate: '2024-11-12',
+        outcomeDate: '2024-12-05',
+        notes: 'REASON: Candidate passed all technical rounds but selected another candidate with more specific experience in global payment regulations.'
+      },
+      {
+        id: 'hist_2',
+        jobTitle: 'Staff Engineer',
+        company: 'Vercel',
+        status: 'Withdrawn',
+        appliedDate: '2025-01-02',
+        notes: 'REASON: Candidate withdrew during offer stage due to location requirements change on the employer side.'
+      }
+    ]
   },
   {
     id: 'c2',
@@ -203,7 +222,18 @@ export const MOCK_CANDIDATES: Candidate[] = [
     resumes: [
       { id: 'res_3', name: 'marcus_reynolds_cv.pdf', url: '#', updatedAt: '2025-02-10T09:00:00Z', type: 'PDF' }
     ],
-    isOpenToWork: false
+    isOpenToWork: false,
+    applicationHistory: [
+      {
+        id: 'hist_3',
+        jobTitle: 'Lead Vue Developer',
+        company: 'Deliveroo',
+        status: 'Rejected',
+        appliedDate: '2024-09-15',
+        outcomeDate: '2024-10-01',
+        notes: 'REASON: Insufficient experience with large-scale TypeScript migrations which was a core project requirement.'
+      }
+    ]
   },
   {
     id: 'c3',

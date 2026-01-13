@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Candidate, Interview, ExternalJob, Skill, ResumeFile } from '../types';
+import { Candidate, Interview, ExternalJob, Skill, ResumeFile, CandidateApplication } from '../types';
 import { analyzeCandidate, generateOutreachEmail, suggestInterviewSlots } from '../services/geminiService';
 import { 
   Mail, 
@@ -46,7 +45,9 @@ import {
   Eye,
   Check,
   Users,
-  Filter
+  Filter,
+  Layers,
+  AlertCircle
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import ActivityTimeline from './ActivityTimeline';
@@ -71,7 +72,7 @@ const CandidateView: React.FC = () => {
   
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'info' | 'resumes' | 'timeline' | 'matches' | 'calendar'>('info');
+  const [activeSubTab, setActiveSubTab] = useState<'info' | 'resumes' | 'timeline' | 'matches' | 'calendar' | 'applications'>('info');
   
   const [candidateNotes, setCandidateNotes] = useState('');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -184,6 +185,7 @@ const CandidateView: React.FC = () => {
 
   const toggleMatchSelect = (jobId: string) => {
     setSelectedMatchJobIds(prev => 
+        // Fix: Use 'jobId' instead of undefined variable 'id'
         prev.includes(jobId) ? prev.filter(id => id !== jobId) : [...prev, jobId]
     );
   };
@@ -574,6 +576,7 @@ const CandidateView: React.FC = () => {
             <div className="flex border-b border-slate-100 overflow-x-auto whitespace-nowrap scrollbar-hide">
                <button onClick={() => setActiveSubTab('info')} className={`px-6 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeSubTab === 'info' ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50/30' : 'text-slate-400'}`}>Profile</button>
                <button onClick={() => setActiveSubTab('resumes')} className={`px-6 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeSubTab === 'resumes' ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50/30' : 'text-slate-400'}`}>Resumes</button>
+               <button onClick={() => setActiveSubTab('applications')} className={`px-6 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeSubTab === 'applications' ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50/30' : 'text-slate-400'}`}>Applications</button>
                <button onClick={() => setActiveSubTab('matches')} className={`px-6 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeSubTab === 'matches' ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50/30' : 'text-slate-400'}`}>Job Matches</button>
                <button onClick={() => setActiveSubTab('calendar')} className={`px-6 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeSubTab === 'calendar' ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50/30' : 'text-slate-400'}`}>Calendar</button>
                <button onClick={() => setActiveSubTab('timeline')} className={`px-6 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeSubTab === 'timeline' ? 'text-brand-600 border-b-2 border-brand-600 bg-brand-50/30' : 'text-slate-400'}`}>Activity</button>
@@ -582,6 +585,60 @@ const CandidateView: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-8">
               {activeSubTab === 'timeline' ? (
                 <ActivityTimeline activities={candidateActivities} />
+              ) : activeSubTab === 'applications' ? (
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Historical Outcomes</h3>
+                        <span className="text-[8px] font-black bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-widest border border-slate-200">System Logs Verified</span>
+                    </div>
+
+                    {activeCandidate.applicationHistory && activeCandidate.applicationHistory.length > 0 ? (
+                        <div className="space-y-4">
+                            {activeCandidate.applicationHistory.map((app) => (
+                                <div key={app.id} className="bg-white border border-slate-200 rounded-[1.5rem] overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
+                                    <div className="p-5">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                                                        app.status === 'Hired' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                                        app.status === 'Rejected' ? 'bg-red-50 text-red-600 border border-red-100' :
+                                                        app.status === 'Withdrawn' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                                                        'bg-brand-50 text-brand-600 border border-brand-100'
+                                                    }`}>
+                                                        {app.status}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-slate-300">•</span>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{app.outcomeDate || app.appliedDate}</span>
+                                                </div>
+                                                <h4 className="font-black text-slate-900 uppercase tracking-tight text-sm leading-none">{app.jobTitle}</h4>
+                                                <p className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mt-2">{app.company}</p>
+                                            </div>
+                                            <div className="p-2 bg-slate-50 rounded-xl text-slate-300 group-hover:text-brand-500 transition-colors">
+                                                <Briefcase size={16} />
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mt-2">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <AlertCircle size={10} className="text-slate-400" />
+                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Dossier Reason / Outcome Notes</span>
+                                            </div>
+                                            <p className="text-[11px] text-slate-600 font-medium leading-relaxed italic">
+                                                {app.notes}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-20 bg-slate-50 rounded-[2rem] border border-slate-200 border-dashed">
+                            <Layers size={40} className="text-slate-200 mx-auto mb-4" />
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No verified application history available</p>
+                        </div>
+                    )}
+                </div>
               ) : activeSubTab === 'resumes' ? (
                 <div className="h-full flex flex-col gap-6">
                     <div className="flex justify-between items-center">
@@ -991,11 +1048,11 @@ const CandidateView: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Expected Salary</p>
                         <p className="text-sm font-bold text-slate-900">{activeCandidate.salaryExpectation || 'Not specified'}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Work Mode</p>
                         <p className="text-sm font-bold text-slate-900">{activeCandidate.workMode || 'Any'}</p>
                     </div>
