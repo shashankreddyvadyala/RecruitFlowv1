@@ -13,7 +13,9 @@ export const INITIAL_BRANDING: AgencyBranding = {
   companyName: 'RecruitFlow Agency',
   logoUrl: '',
   primaryColor: '#2563eb',
-  tagline: 'Precision AI Recruiting'
+  tagline: 'Precision AI Recruiting',
+  senderEmail: 'outreach@recruitflow.ai',
+  signature: 'Best regards,\nAlex Morgan\nLead Talent Partner'
 };
 
 export const MOCK_RECRUITER_STATS: RecruiterStats[] = [
@@ -166,7 +168,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
     resumes: [
       { id: 'res_1', name: 'sarah_chen_cv_2025.pdf', url: '#', updatedAt: '2025-01-15T10:00:00Z', type: 'PDF' },
       { id: 'res_2', name: 'sarah_chen_v1_legacy.pdf', url: '#', updatedAt: '2024-11-02T14:30:00Z', type: 'PDF' }
-    ]
+    ],
+    isOpenToWork: true
   },
   {
     id: 'c2',
@@ -199,7 +202,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
     ],
     resumes: [
       { id: 'res_3', name: 'marcus_reynolds_cv.pdf', url: '#', updatedAt: '2025-02-10T09:00:00Z', type: 'PDF' }
-    ]
+    ],
+    isOpenToWork: false
   },
   {
     id: 'c3',
@@ -230,7 +234,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
     ],
     resumes: [
       { id: 'res_4', name: 'elena_vovas_portfolio_cv.pdf', url: '#', updatedAt: '2025-03-01T11:20:00Z', type: 'PDF' }
-    ]
+    ],
+    isOpenToWork: true
   }
 ];
 
@@ -288,7 +293,7 @@ export const MOCK_TALENT_PROFILES: CandidateProfile[] = [
     ],
     location: 'San Francisco, CA',
     bio: 'Ex-Google engineer specializing in scalable ML infrastructure.',
-    status: 'Bench',
+    status: 'Open to Work',
     avatarUrl: 'https://picsum.photos/100/100?random=10'
   }
 ];

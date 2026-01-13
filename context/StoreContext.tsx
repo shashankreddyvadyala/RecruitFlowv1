@@ -1,13 +1,15 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Job, Candidate, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, UserRole, AgencyBranding, Interview, Notification, Skill } from '../types';
+import { Job, Candidate, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, UserRole, AgencyBranding, RecruiterSettings, Interview, Notification, Skill } from '../types';
 import * as Constants from '../constants';
 
 interface StoreContextType {
   userRole: UserRole;
   branding: AgencyBranding;
+  recruiterSettings: RecruiterSettings;
   setUserRole: (role: UserRole) => void;
   updateBranding: (branding: Partial<AgencyBranding>) => void;
+  updateRecruiterSettings: (settings: Partial<RecruiterSettings>) => void;
   jobs: Job[];
   candidates: Candidate[];
   interviews: Interview[];
@@ -59,6 +61,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [userRole, setUserRole] = useState<UserRole>(persisted?.userRole || UserRole.Owner);
   const [branding, setBranding] = useState<AgencyBranding>(persisted?.branding || Constants.INITIAL_BRANDING);
+  const [recruiterSettings, setRecruiterSettings] = useState<RecruiterSettings>(persisted?.recruiterSettings || {
+    fullName: 'Alex Morgan',
+    jobTitle: 'Lead Talent Partner',
+    email: 'alex.m@recruitflow.ai',
+    signature: 'Best regards,\nAlex Morgan\nLead Talent Partner',
+    avatarUrl: 'https://picsum.photos/100/100?u=me'
+  });
+  
   const [jobs, setJobs] = useState<Job[]>(persisted?.jobs || Constants.MOCK_JOBS);
   const [candidates, setCandidates] = useState<Candidate[]>(persisted?.candidates || Constants.MOCK_CANDIDATES);
   const [interviews, setInterviews] = useState<Interview[]>(persisted?.interviews || Constants.MOCK_INTERVIEWS);
@@ -73,6 +83,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const dataToSave = {
       userRole,
       branding,
+      recruiterSettings,
       jobs,
       candidates,
       interviews,
@@ -83,7 +94,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       recruiterStats
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-  }, [userRole, branding, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats]);
+  }, [userRole, branding, recruiterSettings, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats]);
 
   const notify = (title: string, message: string, type: Notification['type'] = 'info') => {
     const id = `notif_${Date.now()}`;
@@ -97,6 +108,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateBranding = (newBranding: Partial<AgencyBranding>) => {
     setBranding(prev => ({ ...prev, ...newBranding }));
+  };
+
+  const updateRecruiterSettings = (newSettings: Partial<RecruiterSettings>) => {
+    setRecruiterSettings(prev => ({ ...prev, ...newSettings }));
   };
 
   const addJob = (job: Job) => setJobs(prev => [job, ...prev]);
@@ -114,10 +129,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addActivity({
       id: `act_note_${Date.now()}`,
       type: 'Note',
-      subject: 'Intelligence Synced',
-      content: 'Classified notes updated for candidate dossier.',
+      subject: 'Notes Updated',
+      content: 'Internal notes updated for candidate profile.',
       timestamp: new Date().toISOString(),
-      author: 'System Admin',
+      author: 'System',
       entityId: id
     });
   };
@@ -143,41 +158,41 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const exJob = externalJobs.find(j => j.id === externalJobId);
     if (!exJob) return;
 
-    onPhaseChange?.('Elite Bench (Open to Work)');
+    onPhaseChange?.('Priority Seeker Pool (Open to Work)');
     await new Promise(r => setTimeout(r, 1200));
 
-    const benchMatches = talentProfiles.filter(p => 
-      p.status === 'Bench' && 
+    const otWMatches = talentProfiles.filter(p => 
+      p.status === 'Open to Work' && 
       (p.title.toLowerCase().includes(exJob.title.toLowerCase().split(' ')[0]) || 
        exJob.title.toLowerCase().includes(p.title.toLowerCase()))
     );
 
-    onPhaseChange?.('Neural Pool (Passive Scan)');
+    onPhaseChange?.('Passive Talent Scan');
     await new Promise(r => setTimeout(r, 1500));
     const poolMatches = candidates.filter(c => 
       c.role.toLowerCase().includes(exJob.title.toLowerCase().split(' ')[0]) &&
-      !benchMatches.some(b => b.name === `${c.firstName} ${c.lastName}`)
+      !otWMatches.some(b => b.name === `${c.firstName} ${c.lastName}`)
     );
 
-    onPhaseChange?.('Market Discovery (Discovery Tier)');
+    onPhaseChange?.('Market Discovery');
     await new Promise(r => setTimeout(r, 1800));
 
     const finalCandidates: Candidate[] = [];
 
-    benchMatches.forEach(p => {
+    otWMatches.forEach(p => {
         finalCandidates.push({
-            id: `sourced_bench_${Date.now()}_${p.id}`,
+            id: `sourced_otw_${Date.now()}_${p.id}`,
             firstName: p.name.split(' ')[0],
             lastName: p.name.split(' ').slice(1).join(' ') || 'Sourced',
-            email: `${p.name.toLowerCase().replace(' ', '.')}@bench.agency.ai`,
+            email: `${p.name.toLowerCase().replace(' ', '.')}@talent.agency.ai`,
             role: p.title,
             status: 'Active',
             stageId: 's1',
             matchScore: 94 + Math.floor(Math.random() * 5),
             skills: p.skills,
-            lastActivity: 'Sourced: Elite Bench (Preference 1)',
+            lastActivity: 'Sourced: Open to Work',
             avatarUrl: p.avatarUrl,
-            notes: 'SYSTEM PRIORITY 1: This candidate is ON BENCH and actively seeking a new mission.',
+            notes: 'PRIORITY: Candidate is Open to Work.',
             isOpenToWork: true 
         });
     });
@@ -188,8 +203,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ...c,
             id: `sourced_pool_${Date.now()}_${c.id}`,
             matchScore: Math.min(100, 82 + Math.floor(Math.random() * 8) + priorityBonus),
-            lastActivity: 'Sourced: Passive Pool (Preference 2)',
-            notes: (c.notes || '') + `\nSYSTEM PRIORITY 2: Re-sourced from passive agency pool.${c.isOpenToWork ? ' [PRIORITY: ACTIVE SEEKER]' : ''}`
+            lastActivity: `Sourced: ${c.isOpenToWork ? 'Open to Work' : 'Passive'} Pool`,
+            notes: (c.notes || '') + `\nRe-sourced from agency pool.`
         });
     });
 
@@ -197,14 +212,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         finalCandidates.push({
             id: `sourced_ext_${Date.now()}`,
             firstName: 'Market',
-            lastName: 'Operative',
+            lastName: 'Discovery',
             email: `discovery.${Date.now()}@global.ai`,
             role: exJob.title,
             status: 'New',
             stageId: 's1',
             matchScore: 71 + Math.floor(Math.random() * 9),
-            skills: [{ name: 'Sourced via Neural Search', years: 0 }],
-            lastActivity: 'Market Discovery (Tier 3)',
+            skills: [{ name: 'Sourced via Search', years: 0 }],
+            lastActivity: 'Market Search',
             avatarUrl: `https://picsum.photos/100/100?u=${Date.now()}`
         });
     }
@@ -213,7 +228,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addCandidate(cand);
     }
 
-    notify("Sourcing Protocol Finished", `Pipeline built: ${benchMatches.length} Bench, ${poolMatches.length} Pool resonance found.`, "success");
+    notify("Sourcing Complete", `Pipeline built: ${otWMatches.length} Open to Work, ${poolMatches.length} Passive matches.`, "success");
   };
 
   const shareJobWithCandidate = async (candidateId: string, externalJob: ExternalJob) => {
@@ -228,8 +243,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
-  const bulkShareJobs = async (candidateIds: string[], exJobs: ExternalJob[]) => {
-    const jobIds = exJobs.map(j => j.id);
+  const bulkShareJobs = async (candidateIds: string[], externalJobs: ExternalJob[]) => {
+    const jobIds = externalJobs.map(j => j.id);
     
     setCandidates(prev => prev.map(c => {
       if (candidateIds.includes(c.id)) {
@@ -244,15 +259,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addActivity({
         id: `bulk_share_${Date.now()}_${cId}`,
         type: 'JobShared',
-        subject: 'Mission Payload Transmitted',
-        content: `Recruiter shared ${exJobs.length} handpicked missions: ${exJobs.map(j => j.title).join(', ')}. Syncing to Candidate Portal.`,
+        subject: 'Job Opportunities Shared',
+        content: `Recruiter shared ${externalJobs.length} selected jobs. Syncing to Candidate Portal.`,
         timestamp: new Date().toISOString(),
         author: 'Alex Morgan',
         entityId: cId
       });
     });
 
-    notify("Transmission Successful", `Synced ${exJobs.length} missions to ${candidateIds.length} candidate portals.`, "success");
+    notify("Sharing Complete", `Synced ${externalJobs.length} jobs to ${candidateIds.length} candidates.`, "success");
   };
 
   const respondToJobFeedback = (candidateId: string, jobId: string, feedback: 'like' | 'reject') => {
@@ -285,8 +300,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addActivity({
             id: `fb_${Date.now()}`,
             type: 'CandidateFeedback',
-            subject: `Neural Resonance: ${feedback === 'like' ? 'High' : 'Low'}`,
-            content: `${candidate.firstName} ${feedback === 'like' ? 'flagged as Interested' : 'dismissed'} the mission: ${job.title} at ${job.company}.`,
+            subject: `Feedback: ${feedback === 'like' ? 'Interested' : 'Not Interested'}`,
+            content: `${candidate.firstName} ${feedback === 'like' ? 'flagged interest in' : 'dismissed'} the job: ${job.title} at ${job.company}.`,
             timestamp: new Date().toISOString(),
             author: candidate.firstName,
             entityId: candidateId
@@ -296,7 +311,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   return (
     <StoreContext.Provider value={{
-      userRole, branding, setUserRole, updateBranding, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats, notifications,
+      userRole, branding, recruiterSettings, setUserRole, updateBranding, updateRecruiterSettings, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats, notifications,
       addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, shareJobWithCandidate, bulkShareJobs, respondToJobFeedback, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
     }}>
       {children}

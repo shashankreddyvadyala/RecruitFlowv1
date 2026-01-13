@@ -175,7 +175,7 @@ const TalentMatch: React.FC = () => {
                             <div>
                                 <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">{selectedProfile.name}</h2>
                                 <div className="flex gap-3 items-center mt-3">
-                                    <span className="bg-brand-600 text-white text-[10px] font-black px-3 py-1 rounded-xl uppercase tracking-widest shadow-md shadow-brand-600/20">{selectedProfile.status}</span>
+                                    <span className="bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-xl uppercase tracking-widest shadow-md shadow-emerald-500/20">{selectedProfile.status}</span>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
                                         <MapPin size={12} className="text-brand-600"/> {selectedProfile.location}
                                     </p>

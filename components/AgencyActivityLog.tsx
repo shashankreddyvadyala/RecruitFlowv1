@@ -179,4 +179,22 @@ const AgencyActivityLog: React.FC = () => {
                      <button className="flex items-center gap-1 text-[10px] font-black text-brand-600 uppercase tracking-widest hover:gap-2 transition-all">
                         View Profile <ArrowUpRight size={14} />
                      </button>
-                  
+                  </div>
+               </div>
+            </div>
+          ))
+        ) : (
+          <div className="py-20 text-center bg-white rounded-[2.5rem] border border-slate-100 border-dashed">
+             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                <Clock size={32} className="text-slate-300" />
+             </div>
+             <h3 className="text-xl font-bold text-slate-900">No events found</h3>
+             <p className="text-slate-500 mt-1">Try adjusting your filters or search terms.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AgencyActivityLog;

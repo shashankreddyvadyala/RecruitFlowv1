@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, MapPin, Sparkles, ExternalLink, Globe, DollarSign, Loader2, BrainCircuit, Check, X, Send, Users, Star, ArrowRight, ShieldCheck, Briefcase } from 'lucide-react';
+import { Search, MapPin, Sparkles, ExternalLink, Globe, DollarSign, Loader2, BrainCircuit, Check, X, Send, Users, Star, ArrowRight, ShieldCheck, Briefcase, Filter } from 'lucide-react';
 import { ExternalJob, Candidate } from '../types';
 import { useStore } from '../context/StoreContext';
 import { JobScraperService } from '../services/externalServices';
@@ -15,6 +15,9 @@ const JobAggregator: React.FC = () => {
   const [activeJobDetail, setActiveJobDetail] = useState<ExternalJob | null>(null);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
   const [isTransmitting, setIsTransmitting] = useState(false);
+  
+  // Added Candidate Status Filter for matching drawer
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState<'all' | 'openToWork' | 'passive'>('all');
 
   useEffect(() => {
     handleSearch();
@@ -34,15 +37,24 @@ const JobAggregator: React.FC = () => {
 
   const matchedCandidates = useMemo(() => {
     if (!activeJobDetail) return [];
-    return candidates.map(c => {
-      // Logic: Boost score if role keywords match
-      const titleMatch = activeJobDetail.title.toLowerCase().split(' ').some(word => 
-        word.length > 3 && c.role.toLowerCase().includes(word)
-      );
-      const score = titleMatch ? 85 + Math.floor(Math.random() * 15) : 60 + Math.floor(Math.random() * 25);
-      return { ...c, currentMatchScore: score };
-    }).sort((a, b) => b.currentMatchScore - a.currentMatchScore);
-  }, [activeJobDetail, candidates]);
+    
+    return candidates
+      .filter(c => {
+        if (candidateStatusFilter === 'all') return true;
+        if (candidateStatusFilter === 'openToWork') return c.isOpenToWork;
+        if (candidateStatusFilter === 'passive') return !c.isOpenToWork;
+        return true;
+      })
+      .map(c => {
+        // Logic: Boost score if role keywords match
+        const titleMatch = activeJobDetail.title.toLowerCase().split(' ').some(word => 
+          word.length > 3 && c.role.toLowerCase().includes(word)
+        );
+        const score = titleMatch ? 85 + Math.floor(Math.random() * 15) : 60 + Math.floor(Math.random() * 25);
+        return { ...c, currentMatchScore: score };
+      })
+      .sort((a, b) => b.currentMatchScore - a.currentMatchScore);
+  }, [activeJobDetail, candidates, candidateStatusFilter]);
 
   const handleToggleCandidate = (id: string) => {
     setSelectedCandidateIds(prev => 
@@ -67,7 +79,7 @@ const JobAggregator: React.FC = () => {
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
           <div>
             <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Market Explorer</h2>
-            <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Live Global Mission Feed</p>
+            <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-1">Live Global Job Feed</p>
           </div>
         </div>
 
@@ -96,7 +108,7 @@ const JobAggregator: React.FC = () => {
             onClick={handleSearch}
             className="bg-slate-900 text-white px-10 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl active:scale-95"
           >
-            {isLoadingJobs ? <Loader2 className="animate-spin" /> : 'Scan Missions'}
+            {isLoadingJobs ? <Loader2 className="animate-spin" /> : 'Scan Markets'}
           </button>
         </div>
       </div>
@@ -106,7 +118,7 @@ const JobAggregator: React.FC = () => {
         {jobs.map((job) => (
           <div 
             key={job.id} 
-            onClick={() => { setActiveJobDetail(job); setSelectedCandidateIds([]); }}
+            onClick={() => { setActiveJobDetail(job); setSelectedCandidateIds([]); setCandidateStatusFilter('all'); }}
             className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 transition-all group hover:shadow-2xl hover:border-brand-500 cursor-pointer relative overflow-hidden"
           >
             <div className="flex flex-col md:flex-row gap-8 items-start">
@@ -138,7 +150,7 @@ const JobAggregator: React.FC = () => {
         ))}
       </div>
 
-      {/* Mission Command Drawer */}
+      {/* Command Drawer */}
       {activeJobDetail && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-[100] flex justify-end animate-in fade-in duration-300">
           <div 
@@ -167,11 +179,33 @@ const JobAggregator: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 py-1 bg-white border border-slate-200 rounded-lg">
-                  Mission Target Node
-                </span>
-                <div className="h-px bg-slate-200 flex-1" />
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 py-1 bg-white border border-slate-200 rounded-lg">
+                    Neural Ranker
+                  </span>
+                  <div className="h-px w-12 bg-slate-200" />
+                </div>
+
+                {/* Candidate Status Toggle Group */}
+                <div className="flex items-center gap-1 p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
+                  <FilterButton 
+                    active={candidateStatusFilter === 'all'} 
+                    onClick={() => setCandidateStatusFilter('all')} 
+                    label="All" 
+                  />
+                  <FilterButton 
+                    active={candidateStatusFilter === 'openToWork'} 
+                    onClick={() => setCandidateStatusFilter('openToWork')} 
+                    label="Open to Work" 
+                    icon={<Star size={12} className={candidateStatusFilter === 'openToWork' ? 'fill-emerald-500 text-emerald-500' : ''} />}
+                  />
+                  <FilterButton 
+                    active={candidateStatusFilter === 'passive'} 
+                    onClick={() => setCandidateStatusFilter('passive')} 
+                    label="Passive" 
+                  />
+                </div>
               </div>
             </div>
 
@@ -189,47 +223,57 @@ const JobAggregator: React.FC = () => {
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {matchedCandidates.map(candidate => {
-                  const isSelected = selectedCandidateIds.includes(candidate.id);
-                  return (
-                    <div 
-                      key={candidate.id}
-                      onClick={() => handleToggleCandidate(candidate.id)}
-                      className={`p-5 rounded-[2rem] border transition-all cursor-pointer flex items-center gap-5 group/item ${
-                        isSelected 
-                        ? 'bg-brand-50 border-brand-500 shadow-lg' 
-                        : 'bg-white border-slate-100 hover:border-brand-200'
-                      }`}
-                    >
-                      <div className="relative">
-                        <img src={candidate.avatarUrl} className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-white" />
-                        <div className={`absolute -top-1 -right-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                          isSelected ? 'bg-brand-600 border-brand-600 text-white shadow-glow' : 'bg-white border-slate-200'
-                        }`}>
-                          {isSelected && <Check size={14} />}
-                        </div>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start mb-1">
-                          <h5 className="font-black text-slate-900 uppercase tracking-tight text-sm leading-none">{candidate.firstName} {candidate.lastName}</h5>
-                          <div className={`text-xs font-black tracking-tighter ${candidate.currentMatchScore >= 90 ? 'text-emerald-500' : 'text-brand-500'}`}>
-                            {candidate.currentMatchScore}% Match
+              <div className="space-y-3 pb-12">
+                {matchedCandidates.length > 0 ? (
+                  matchedCandidates.map(candidate => {
+                    const isSelected = selectedCandidateIds.includes(candidate.id);
+                    return (
+                      <div 
+                        key={candidate.id}
+                        onClick={() => handleToggleCandidate(candidate.id)}
+                        className={`p-5 rounded-[2rem] border transition-all cursor-pointer flex items-center gap-5 group/item ${
+                          isSelected 
+                          ? 'bg-brand-50 border-brand-500 shadow-lg' 
+                          : 'bg-white border-slate-100 hover:border-brand-200'
+                        }`}
+                      >
+                        <div className="relative">
+                          <img src={candidate.avatarUrl} className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-white" />
+                          <div className={`absolute -top-1 -right-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                            isSelected ? 'bg-brand-600 border-brand-600 text-white shadow-glow' : 'bg-white border-slate-200'
+                          }`}>
+                            {isSelected && <Check size={14} />}
                           </div>
                         </div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{candidate.role}</p>
-                        
-                        <div className="w-full h-1 bg-slate-100 rounded-full mt-3 overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-1000 ${candidate.currentMatchScore >= 90 ? 'bg-emerald-500' : 'bg-brand-500'}`} 
-                            style={{ width: `${candidate.currentMatchScore}%` }} 
-                          />
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-1">
+                            <div className="flex items-center gap-2">
+                                <h5 className="font-black text-slate-900 uppercase tracking-tight text-sm leading-none">{candidate.firstName} {candidate.lastName}</h5>
+                                {candidate.isOpenToWork && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-glow" />}
+                            </div>
+                            <div className={`text-xs font-black tracking-tighter ${candidate.currentMatchScore >= 90 ? 'text-emerald-500' : 'text-brand-500'}`}>
+                              {candidate.currentMatchScore}% Match
+                            </div>
+                          </div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{candidate.role}</p>
+                          
+                          <div className="w-full h-1 bg-slate-100 rounded-full mt-3 overflow-hidden">
+                            <div 
+                              className={`h-full transition-all duration-1000 ${candidate.currentMatchScore >= 90 ? 'bg-emerald-500' : 'bg-brand-500'}`} 
+                              style={{ width: `${candidate.currentMatchScore}%` }} 
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-20 bg-slate-50 rounded-[2rem] border border-slate-200 border-dashed">
+                    <Users size={32} className="text-slate-200 mx-auto mb-4" />
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No matching {candidateStatusFilter !== 'all' ? candidateStatusFilter.replace('openToWork', 'Open to Work').toLowerCase() : ''} talent segments found</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -253,18 +297,18 @@ const JobAggregator: React.FC = () => {
                   >
                     {isTransmitting ? (
                       <>
-                        <Loader2 size={16} className="animate-spin" /> Transmitting...
+                        <Loader2 size={16} className="animate-spin" /> Synchronizing...
                       </>
                     ) : (
                       <>
-                        <Send size={16} /> Send Outreach
+                        <Send size={16} /> Send Opportunity
                       </>
                     )}
                   </button>
                 </div>
               ) : (
                 <div className="p-6 rounded-[2rem] border border-slate-200 border-dashed text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select candidates to initiate transmission</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select talent segments to initiate transmission</p>
                 </div>
               )}
             </div>
@@ -279,6 +323,16 @@ const InfoTag = ({ icon, text }: { icon: any, text: string }) => (
   <span className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-black text-slate-500 uppercase tracking-widest">
     {icon} {text}
   </span>
+);
+
+const FilterButton = ({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon?: React.ReactNode }) => (
+  <button 
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 whitespace-nowrap ${active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+  >
+      {icon}
+      {label}
+  </button>
 );
 
 export default JobAggregator;

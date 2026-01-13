@@ -85,7 +85,6 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
   const [isTransmitting, setIsTransmitting] = useState(false);
 
   const [profileCompleteness, setProfileCompleteness] = useState(68);
-  const [isPassiveMode, setIsPassiveMode] = useState(false);
   const [isOpenToWork, setIsOpenToWork] = useState(myData.isOpenToWork || false);
   
   const [previewResume, setPreviewResume] = useState<ResumeFile | null>(null);
@@ -198,16 +197,16 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
     addActivity({
       id: `act_otw_${Date.now()}`,
       type: 'ProfileUpdate',
-      subject: val ? 'Open to Work Enabled' : 'Open to Work Disabled',
-      content: `${myData.firstName} is ${val ? 'now' : 'no longer'} looking for new roles.`,
+      subject: val ? 'Open to Work Enabled' : 'Passive Status Enabled',
+      content: `${myData.firstName} is ${val ? 'now Open to Work' : 'now browsing Passively'}.`,
       timestamp: new Date().toISOString(),
       author: myData.firstName,
       entityId: myData.id
     });
 
     notify(
-        val ? "Status Updated" : "Status Updated", 
-        val ? "Recruiters will now see you are actively looking for work." : "Your status has been set to passive.", 
+        "Status Updated", 
+        val ? "Recruiters will now see you are Open to Work." : "Your status has been set to Passive.", 
         "success"
     );
   };
@@ -301,8 +300,12 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                         <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600 rounded-full blur-[120px] opacity-20 -mr-32 -mt-32"></div>
                         <div className="relative z-10">
                             <div className="flex items-center gap-2 mb-6">
-                                <span className="bg-brand-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em]">Active Candidate</span>
-                                {isOpenToWork && <span className="bg-emerald-500 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em] shadow-glow">Actively Looking</span>}
+                                <span className="bg-brand-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em]">Verified Profile</span>
+                                {isOpenToWork ? (
+                                  <span className="bg-emerald-500 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em] shadow-glow">Open to Work</span>
+                                ) : (
+                                  <span className="bg-slate-700 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em]">Passive</span>
+                                )}
                             </div>
                             <h1 className="text-5xl font-black mb-4 tracking-tight leading-none uppercase">Welcome, <br/>{myData.firstName}.</h1>
                             <p className="text-slate-400 text-lg font-medium max-w-md mt-6 leading-relaxed">
@@ -749,7 +752,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                         <span className="text-[9px] text-emerald-600 font-medium mt-1">Get prioritized for matching roles</span>
                                     </div>
                                     <button 
-                                        onClick={() => handleToggleOpenToWork(!isOpenToWork)}
+                                        onClick={() => handleToggleOpenToWork(true)}
                                         className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${isOpenToWork ? 'bg-emerald-500' : 'bg-slate-200'}`}
                                     >
                                         <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-300 ${isOpenToWork ? 'translate-x-6' : ''}`} />
@@ -758,14 +761,14 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
 
                                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="flex flex-col">
-                                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Visibility Control</span>
-                                        <span className="text-[9px] text-slate-400 font-medium mt-1">Allow recruiters to find your profile</span>
+                                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Passive</span>
+                                        <span className="text-[9px] text-slate-400 font-medium mt-1">Only show roles for specific tech stack</span>
                                     </div>
                                     <button 
-                                        onClick={() => setIsPassiveMode(!isPassiveMode)}
-                                        className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${isPassiveMode ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                        onClick={() => handleToggleOpenToWork(false)}
+                                        className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${!isOpenToWork ? 'bg-emerald-500' : 'bg-slate-200'}`}
                                     >
-                                        <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-300 ${isPassiveMode ? 'translate-x-6' : ''}`} />
+                                        <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-300 ${!isOpenToWork ? 'translate-x-6' : ''}`} />
                                     </button>
                                 </div>
                             </div>

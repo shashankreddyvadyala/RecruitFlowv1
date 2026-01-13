@@ -45,7 +45,8 @@ import {
   ChevronRight,
   Eye,
   Check,
-  Users
+  Users,
+  Filter
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import ActivityTimeline from './ActivityTimeline';
@@ -74,6 +75,8 @@ const CandidateView: React.FC = () => {
   
   const [candidateNotes, setCandidateNotes] = useState('');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'openToWork' | 'passive'>('all');
 
   // Bulk Selection States (Main Table)
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
@@ -101,6 +104,16 @@ const CandidateView: React.FC = () => {
     skillsRaw: '',
     yearsOfExperience: '0'
   });
+
+  const filteredCandidates = useMemo(() => {
+    return candidates.filter(c => {
+      const matchesSearch = `${c.firstName} ${c.lastName} ${c.role} ${c.email}`.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'all' 
+        || (statusFilter === 'openToWork' && c.isOpenToWork)
+        || (statusFilter === 'passive' && !c.isOpenToWork);
+      return matchesSearch && matchesStatus;
+    });
+  }, [candidates, searchQuery, statusFilter]);
 
   const activeCandidate = candidates.find(c => c.id === selectedCandidateId) || null;
   
@@ -150,7 +163,7 @@ const CandidateView: React.FC = () => {
       setCandidateNotes(activeCandidate.notes || '');
       setSuggestedSlots([]);
       setShowManualForm(false);
-      setSelectedMatchJobIds([]); // Reset match selection when switching candidate
+      setSelectedMatchJobIds([]); 
     }
   }, [selectedCandidateId, activeCandidate?.notes]);
 
@@ -162,10 +175,10 @@ const CandidateView: React.FC = () => {
   };
 
   const toggleAll = () => {
-    if (bulkSelectedIds.length === candidates.length) {
+    if (bulkSelectedIds.length === filteredCandidates.length) {
         setBulkSelectedIds([]);
     } else {
-        setBulkSelectedIds(candidates.map(c => c.id));
+        setBulkSelectedIds(filteredCandidates.map(c => c.id));
     }
   };
 
@@ -209,14 +222,14 @@ const CandidateView: React.FC = () => {
     addActivity({
       id: `act_share_${Date.now()}`,
       type: 'JobShared',
-      subject: 'Handpicked Mission Shared',
-      content: `Shared "${job.title}" at ${job.company} with candidate portal.`,
+      subject: 'Job Shared',
+      content: `Shared "${job.title}" at ${job.company} with candidate.`,
       timestamp: new Date().toISOString(),
       author: 'Alex Morgan',
       entityId: activeCandidate.id
     });
 
-    notify("Mission Shared", `Shared ${job.title} with ${activeCandidate.firstName}.`, "success");
+    notify("Job Shared", `Shared ${job.title} with ${activeCandidate.firstName}.`, "success");
   };
 
   const handleSmartSchedule = async () => {
@@ -254,7 +267,7 @@ const CandidateView: React.FC = () => {
       interviewerName: interviewer,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
-      location: 'https://meet.google.com/abc-defg-hij',
+      location: 'https://meet.google.com/abc-def-ghi',
       status: 'Scheduled',
       type: interviewType,
       notes: 'Scheduled via AI Suggestions.'
@@ -353,23 +366,47 @@ const CandidateView: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col font-sans relative">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between mb-8 gap-6">
         <div>
            <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">Candidate Pool</h2>
            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Direct Talent Access</p>
         </div>
-        <div className="flex gap-4">
+        
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
+          {/* Status Filter Toggle */}
+          <div className="flex items-center gap-1 p-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden shrink-0">
+            <FilterButton 
+              active={statusFilter === 'all'} 
+              onClick={() => setStatusFilter('all')} 
+              label="All" 
+            />
+            <FilterButton 
+              active={statusFilter === 'openToWork'} 
+              onClick={() => setStatusFilter('openToWork')} 
+              label="Open to Work" 
+              icon={<Star size={14} className={statusFilter === 'openToWork' ? 'fill-emerald-500 text-emerald-500' : ''} />}
+            />
+            <FilterButton 
+              active={statusFilter === 'passive'} 
+              onClick={() => setStatusFilter('passive')} 
+              label="Passive" 
+            />
+          </div>
+
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
             <input 
               type="text" 
-              placeholder="Search..." 
-              className="pl-12 pr-6 py-2.5 bg-white border border-slate-200 rounded-xl w-64 focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium"
+              placeholder="Search by name or role..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-12 pr-6 py-2.5 bg-white border border-slate-200 rounded-xl w-64 focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium shadow-sm"
             />
           </div>
+          
           <button 
             onClick={() => setShowAddModal(true)}
-            className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-800 transition-colors flex items-center gap-2"
+            className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-sm whitespace-nowrap"
           >
             <UserPlus size={16} /> Add Candidate
           </button>
@@ -385,24 +422,22 @@ const CandidateView: React.FC = () => {
                     <button 
                         onClick={toggleAll}
                         className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                            bulkSelectedIds.length === candidates.length && candidates.length > 0
+                            bulkSelectedIds.length === filteredCandidates.length && filteredCandidates.length > 0
                             ? 'bg-brand-600 border-brand-600 text-white shadow-lg'
                             : 'border-slate-300 bg-white'
                         }`}
                     >
-                        {bulkSelectedIds.length === candidates.length && candidates.length > 0 && <Check size={14} />}
+                        {bulkSelectedIds.length === filteredCandidates.length && filteredCandidates.length > 0 && <Check size={14} />}
                     </button>
                 </th>
-                <th className="px-4 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Dossier</th>
-                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Current Role</th>
+                <th className="px-4 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Candidate</th>
+                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Current Role / Desired Role</th>
                 <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Status</th>
-                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 text-right tracking-widest">Resonance</th>
                 <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 text-right tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {candidates.map((c) => {
-                const isTopMatch = c.matchScore >= 90;
+              {filteredCandidates.map((c) => {
                 const isSelected = bulkSelectedIds.includes(c.id);
                 return (
                   <tr key={c.id} className={`hover:bg-slate-50/50 transition-colors group cursor-pointer ${isSelected ? 'bg-brand-50/40' : ''}`} onClick={() => setSelectedCandidateId(c.id)}>
@@ -429,38 +464,48 @@ const CandidateView: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-8 py-5">
-                      <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{c.role}</span>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{c.role}</span>
+                        {c.preferredRoles && c.preferredRoles.length > 0 && (
+                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest mt-1">
+                            <span className="text-brand-600/50">Target:</span> {c.preferredRoles[0]}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-2">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                            isTopMatch ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'
+                            c.isOpenToWork ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'
                         }`}>
-                            {isTopMatch ? 'Top Priority' : 'Active'}
+                            {c.isOpenToWork ? 'Open to Work' : 'Passive'}
                         </span>
                       </div>
                     </td>
                     <td className="px-8 py-5 text-right">
-                      <span className={`text-sm font-black ${c.matchScore > 85 ? 'text-emerald-600' : 'text-brand-600'}`}>
-                        {c.matchScore}%
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right">
                       <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={(e) => handleEmail(c, e)} className="p-2 text-slate-400 hover:text-brand-600 transition-colors" title="Draft Outreach"><Mail size={16} /></button>
-                        <button onClick={(e) => handleAnalyze(c, e)} className="p-2 text-slate-400 hover:text-purple-600 transition-colors" title="AI Resonance Check"><Zap size={16} /></button>
-                        <button onClick={(e) => handleDeleteCandidate(c.id, `${c.firstName}`, e)} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                        <button onClick={(e) => handleAnalyze(c, e)} className="p-2 text-slate-400 hover:text-purple-600 transition-colors" title="AI Match Check"><Zap size={16} /></button>
+                        <button onClick={(e) => handleDeleteCandidate(c.id, `${c.firstName}`, e)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
+              {filteredCandidates.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-24 text-center">
+                    <Users size={48} className="text-slate-100 mx-auto mb-4" />
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No candidates match your filters</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Simplified Selection Dock */}
+      {/* Selection Dock */}
       {bulkSelectedIds.length > 0 && (
           <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[150] animate-in slide-in-from-bottom-8 duration-300">
               <div className="bg-white/95 backdrop-blur-md px-6 py-3 rounded-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)] border border-slate-200 flex items-center gap-6">
@@ -480,7 +525,7 @@ const CandidateView: React.FC = () => {
                         onClick={() => setShowBulkShare(true)}
                         className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-600 transition-all shadow-lg active:scale-95 flex items-center gap-2"
                       >
-                          <Send size={14} /> Transmit Jobs
+                          <Send size={14} /> Share Jobs
                       </button>
                   </div>
               </div>
@@ -541,8 +586,8 @@ const CandidateView: React.FC = () => {
                 <div className="h-full flex flex-col gap-6">
                     <div className="flex justify-between items-center">
                         <div>
-                           <h3 className="text-xl font-bold text-slate-900">Resume Vault</h3>
-                           <p className="text-xs text-slate-400 font-medium uppercase mt-1">Select a version to preview</p>
+                           <h3 className="text-xl font-bold text-slate-900">Documents</h3>
+                           <p className="text-xs text-slate-400 font-medium uppercase mt-1">Preview uploaded resumes</p>
                         </div>
                     </div>
                     
@@ -574,7 +619,7 @@ const CandidateView: React.FC = () => {
                                         </div>
                                         {idx === 0 && (
                                             <div className="absolute top-0 right-0 px-2 py-0.5 bg-emerald-500 text-white text-[7px] font-black uppercase tracking-widest rounded-bl-lg">
-                                                Latest
+                                                Current
                                             </div>
                                         )}
                                     </div>
@@ -582,7 +627,7 @@ const CandidateView: React.FC = () => {
                             ) : (
                                 <div className="p-8 text-center bg-slate-50 rounded-3xl border border-slate-100 border-dashed">
                                     <FileText size={32} className="text-slate-200 mx-auto mb-4" />
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase">No resumes uploaded</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">No documents</p>
                                 </div>
                             )}
                         </div>
@@ -592,7 +637,7 @@ const CandidateView: React.FC = () => {
                                 <>
                                     <div className="p-4 bg-white border-b border-slate-200 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Previewing:</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Viewing:</span>
                                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 truncate max-w-[200px]">{activeResume.name}</span>
                                         </div>
                                         <div className="flex gap-2">
@@ -615,14 +660,14 @@ const CandidateView: React.FC = () => {
                                                         <p className="text-xs font-bold text-slate-900">Lead Systems Engineer @ GlobalScale</p>
                                                         <p className="text-[9px] text-slate-400 italic">2022 - Present</p>
                                                         <p className="text-[10px] text-slate-600 mt-2 leading-relaxed">
-                                                            Architected and deployed high-resonance neural matching engine processing 50k+ transactions per minute. Led a team of 15 engineers across 3 timezones.
+                                                            Architected and deployed complex enterprise solutions for distributed infrastructure.
                                                         </p>
                                                     </div>
                                                 </div>
                                             </section>
 
                                             <section>
-                                                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Key Competencies</h2>
+                                                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Skills</h2>
                                                 <div className="flex flex-wrap gap-2">
                                                     {activeCandidate.skills.map(s => (
                                                         <span key={s.name} className="text-[9px] font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">{s.name}</span>
@@ -631,7 +676,7 @@ const CandidateView: React.FC = () => {
                                             </section>
 
                                             <section>
-                                                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Academic Credentials</h2>
+                                                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Education</h2>
                                                 {activeCandidate.education?.map((edu, idx) => (
                                                     <div key={idx} className="mb-2">
                                                         <p className="text-[10px] font-bold text-slate-900">{edu.degree}</p>
@@ -647,7 +692,7 @@ const CandidateView: React.FC = () => {
                                     <div className="w-16 h-16 bg-white rounded-3xl shadow-md flex items-center justify-center text-slate-200 mb-4 border border-slate-200">
                                         <Eye size={32} />
                                     </div>
-                                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Select a resume to preview documentation</p>
+                                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Select a document to preview</p>
                                 </div>
                             )}
                         </div>
@@ -748,11 +793,11 @@ const CandidateView: React.FC = () => {
                     ) : (
                         <div className="text-center py-12">
                             <Bot size={40} className="text-slate-200 mx-auto mb-4" />
-                            <p className="text-xs text-slate-400 font-bold uppercase">No external jobs found</p>
+                            <p className="text-xs text-slate-400 font-bold uppercase">No job matches identified</p>
                         </div>
                     )}
 
-                    {/* Internal Selection Dock for the sub-tab */}
+                    {/* Internal Selection Dock */}
                     {selectedMatchJobIds.length > 0 && (
                         <div className="absolute bottom-4 left-0 right-0 px-2 animate-in slide-in-from-bottom-4 duration-300">
                             <div className="bg-slate-900 text-white p-4 rounded-[1.5rem] flex items-center justify-between shadow-2xl border border-white/10">
@@ -760,7 +805,7 @@ const CandidateView: React.FC = () => {
                                     <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center font-black text-xs">
                                         {selectedMatchJobIds.length}
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest">Missions Selected</span>
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Jobs Selected</span>
                                 </div>
                                 <button 
                                     disabled={isSharingMatches}
@@ -778,8 +823,8 @@ const CandidateView: React.FC = () => {
                 <div className="space-y-8 pb-12">
                     <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[80px] opacity-20 -mr-16 -mt-16 pointer-events-none"></div>
-                        <h4 className="text-xs font-bold text-brand-400 uppercase tracking-[0.2em] mb-4">Interviews & Scheduling</h4>
-                        <p className="text-lg font-bold mb-6 leading-tight">Find the perfect time to meet {activeCandidate.firstName}.</p>
+                        <h4 className="text-xs font-bold text-brand-400 uppercase tracking-[0.2em] mb-4">Interviews</h4>
+                        <p className="text-lg font-bold mb-6 leading-tight">Schedule an interview with {activeCandidate.firstName}.</p>
                         
                         <div className="flex flex-wrap gap-4">
                             <button 
@@ -788,13 +833,13 @@ const CandidateView: React.FC = () => {
                                 className="px-6 py-3 bg-brand-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-700 transition-all flex items-center gap-2 shadow-lg shadow-brand-600/20"
                             >
                                 {isSchedulingAI ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                                AI Suggestions
+                                AI Suggest Time
                             </button>
                             <button 
                                 onClick={() => setShowManualForm(!showManualForm)}
                                 className="px-6 py-3 bg-white/10 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-white/20 transition-all flex items-center gap-2 border border-white/10"
                             >
-                                <Plus size={16} /> Manual Entry
+                                <Plus size={16} /> Manual Schedule
                             </button>
                         </div>
 
@@ -812,7 +857,7 @@ const CandidateView: React.FC = () => {
                                         </div>
                                     </div>
                                     <button type="submit" className="w-full py-3 bg-white text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-colors">
-                                        Confirm Interview Schedule
+                                        Set Interview
                                     </button>
                                 </form>
                             </div>
@@ -820,7 +865,7 @@ const CandidateView: React.FC = () => {
 
                         {suggestedSlots.length > 0 && (
                             <div className="mt-8 pt-8 border-t border-white/10 space-y-4 animate-in slide-in-from-top-4 duration-300">
-                                <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Optimized Availability</p>
+                                <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Best Times</p>
                                 {suggestedSlots.map((slot, i) => (
                                     <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between hover:bg-white/10 transition-colors group/slot">
                                         <div>
@@ -879,7 +924,7 @@ const CandidateView: React.FC = () => {
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 mb-2">
                             <History size={16} className="text-slate-400" />
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">History & Completed</h4>
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Past Interviews</h4>
                         </div>
                         {pastInterviews.length > 0 ? (
                             pastInterviews.map((int) => (
@@ -898,16 +943,16 @@ const CandidateView: React.FC = () => {
                             ))
                         ) : (
                             <div className="text-center py-10 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No historical data available</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No past interview records</p>
                             </div>
                         )}
                     </div>
                 </div>
               ) : (
                 <div className="space-y-8">
-                  <div className="bg-white border border-slate-200 p-6 rounded-2xl">
+                  <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-bold text-slate-900">Notes</h3>
+                      <h3 className="font-bold text-slate-900">Internal Notes</h3>
                       <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-xs font-bold text-brand-600 hover:underline">
                          {isSavingNotes ? 'Saving...' : 'Save Notes'}
                       </button>
@@ -918,17 +963,17 @@ const CandidateView: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                           <Award size={14} className="text-brand-600" /> Professional Experience
+                           <Award size={14} className="text-brand-600" /> Total Experience
                         </p>
                         <div className="flex items-baseline gap-2">
                             <span className="text-3xl font-black text-slate-900 tracking-tighter">{activeCandidate.yearsOfExperience || '0'}</span>
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Years in Industry</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Years</span>
                         </div>
                     </div>
                     
                     <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                           <GraduationCap size={14} className="text-brand-600" /> Academic Foundation
+                           <GraduationCap size={14} className="text-brand-600" /> Education
                         </p>
                         {activeCandidate.education && activeCandidate.education.length > 0 ? (
                             <div className="space-y-4">
@@ -957,7 +1002,7 @@ const CandidateView: React.FC = () => {
                   </div>
 
                   <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Skills & Technology Inventory</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-3">Skills</p>
                     <div className="flex flex-wrap gap-2">
                         {activeCandidate.skills.map(skill => (
                             <span key={skill.name} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -977,7 +1022,7 @@ const CandidateView: React.FC = () => {
 
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                  <h3 className="text-lg font-bold text-slate-900">Add New Candidate</h3>
                  <button onClick={() => setShowAddModal(false)} className="p-2 text-slate-400"><X size={20} /></button>
@@ -1013,5 +1058,15 @@ const CandidateView: React.FC = () => {
     </div>
   );
 };
+
+const FilterButton = ({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon?: React.ReactNode }) => (
+  <button 
+      onClick={onClick}
+      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${active ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+  >
+      {icon}
+      {label}
+  </button>
+);
 
 export default CandidateView;
