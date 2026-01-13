@@ -4,14 +4,14 @@ import { Briefcase, TrendingUp, CheckCircle, Trophy, Send, Zap, Sparkles } from 
 import { useStore } from '../context/StoreContext';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
-type TimeRange = '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
+type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const AgencyDashboard: React.FC = () => {
   const { placements, recruiterStats } = useStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
 
   const multipliers: Record<TimeRange, number> = {
-    '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
+    '1D': 0.1, '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
   };
 
   const POINTS = { PLACEMENT: 50, PROGRESSION: 10, APPLICATION: 2 };
@@ -57,8 +57,13 @@ const AgencyDashboard: React.FC = () => {
   }, [timeRange, recruiterStats]);
 
   const timeOptions: { label: string, value: TimeRange }[] = [
-    { label: '7 Days', value: '7D' }, { label: '1 Month', value: '1M' }, { label: '3 Months', value: '3M' },
-    { label: '6 Months', value: '6M' }, { label: '1 Year', value: '1Y' }, { label: 'All Time', value: 'ALL' },
+    { label: '1D', value: '1D' },
+    { label: '7D', value: '7D' }, 
+    { label: '1M', value: '1M' }, 
+    { label: '3M', value: '3M' },
+    { label: '6M', value: '6M' }, 
+    { label: '1Y', value: '1Y' }, 
+    { label: 'ALL', value: 'ALL' },
   ];
 
   return (
@@ -69,7 +74,7 @@ const AgencyDashboard: React.FC = () => {
            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em] mt-1">Agency Performance Index (API) v3.2</p>
         </div>
         
-        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto max-w-full">
+        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto max-w-full no-scrollbar">
            {timeOptions.map((opt) => (
              <button
                key={opt.value}

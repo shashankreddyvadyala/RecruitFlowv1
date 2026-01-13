@@ -4,7 +4,7 @@ import { useStore } from '../context/StoreContext';
 import { UserRole, RecruiterStats } from '../types';
 import { Trophy, Send, Zap, UserPlus, Trash2, X, ShieldCheck, Sparkles, HelpCircle, ArrowUpRight, TrendingUp, CalendarDays, Edit3, Save } from 'lucide-react';
 
-type TimeRange = '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
+type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const TeamManagement: React.FC = () => {
   const { recruiterStats, userRole, addRecruiter, updateRecruiter, removeRecruiter, notify } = useStore();
@@ -25,6 +25,7 @@ const TeamManagement: React.FC = () => {
   };
 
   const multipliers: Record<TimeRange, number> = {
+    '1D': 0.1,
     '7D': 0.25,
     '1M': 1,
     '3M': 3,
@@ -114,12 +115,13 @@ const TeamManagement: React.FC = () => {
   };
 
   const timeOptions: { label: string, value: TimeRange }[] = [
-    { label: '7 Days', value: '7D' },
-    { label: '1 Month', value: '1M' },
-    { label: '3 Months', value: '3M' },
-    { label: '6 Months', value: '6M' },
-    { label: '1 Year', value: '1Y' },
-    { label: 'All Time', value: 'ALL' },
+    { label: '1D', value: '1D' },
+    { label: '7D', value: '7D' },
+    { label: '1M', value: '1M' },
+    { label: '3M', value: '3M' },
+    { label: '6M', value: '6M' },
+    { label: '1Y', value: '1Y' },
+    { label: 'ALL', value: 'ALL' },
   ];
 
   return (

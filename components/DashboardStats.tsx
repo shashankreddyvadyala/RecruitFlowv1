@@ -12,7 +12,7 @@ import {
 import { Send, Zap, Trophy, HelpCircle, Info, Calendar, ArrowUpRight, TrendingUp, Users } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
-type TimeRange = '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
+type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const BASE_CHART_VALUES = [
   { inflow: 8, submissions: 12 }, 
@@ -61,11 +61,12 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
 
   const multipliers: Record<TimeRange, number> = {
-    '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
+    '1D': 0.1, '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
   };
 
   const getLabels = (range: TimeRange) => {
     switch (range) {
+      case '1D': return ['00h', '04h', '08h', '12h', '16h', '20h', '23h'];
       case '7D': return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       case '1M': return ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6', 'Week 7'];
       case '3M':
@@ -90,7 +91,7 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
         movements: Math.round(baseStats.moves * mult).toLocaleString(),
         placements: Math.round(baseStats.hires * mult).toLocaleString(),
         candidates: candidates.length.toLocaleString(),
-        trend: timeRange === '7D' ? '+4%' : '+18%',
+        trend: timeRange === '7D' || timeRange === '1D' ? '+4%' : '+18%',
         chartData: BASE_CHART_VALUES.map((d, idx) => ({ 
             name: labels[idx] || `P${idx + 1}`, 
             inflow: Math.round(d.inflow * mult),
@@ -100,8 +101,13 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
   }, [timeRange, recruiterStats, candidates]);
 
   const timeOptions: { label: string, value: TimeRange }[] = [
-    { label: '7D', value: '7D' }, { label: '1M', value: '1M' }, { label: '3M', value: '3M' },
-    { label: '6M', value: '6M' }, { label: '1Y', value: '1Y' }, { label: 'All', value: 'ALL' },
+    { label: '1D', value: '1D' }, 
+    { label: '7D', value: '7D' }, 
+    { label: '1M', value: '1M' }, 
+    { label: '3M', value: '3M' },
+    { label: '6M', value: '6M' }, 
+    { label: '1Y', value: '1Y' }, 
+    { label: 'ALL', value: 'ALL' },
   ];
 
   return (
@@ -112,7 +118,7 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">Operational Performance Hub</p>
         </div>
         
-        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto max-w-full">
+        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto max-w-full no-scrollbar">
            {timeOptions.map((opt) => (
              <button
                key={opt.value}
