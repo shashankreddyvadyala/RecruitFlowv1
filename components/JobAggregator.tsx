@@ -37,7 +37,7 @@ interface AdvancedFilters {
 }
 
 const JobAggregator: React.FC = () => {
-  const { candidates, bulkShareJobs, externalJobs } = useStore();
+  const { candidates, bulkShareJobs } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [locationQuery, setLocationQuery] = useState('');
   const [jobs, setJobs] = useState<ExternalJob[]>([]);
@@ -64,13 +64,28 @@ const JobAggregator: React.FC = () => {
   const handleSearch = async () => {
     setIsLoadingJobs(true);
     try {
-      // In a real app, filters would be passed to the API
       const results = await JobScraperService.searchJobs(searchQuery, locationQuery);
       
-      // Simulate filtering logic on mock data
       const filtered = results.filter(job => {
+          // Job Type / Protocol Filter
           if (filters.type.length > 0 && !filters.type.includes(job.type)) return false;
-          // Note: Mock data might need more variety to show all filters working
+          
+          // Environment / Work Mode Filter
+          if (filters.workMode.length > 0 && !filters.workMode.some(m => job.location.toLowerCase().includes(m.toLowerCase()) || (m === 'Remote' && job.location.toLowerCase() === 'remote'))) return false;
+
+          // Salary Filter
+          if (filters.salaryMin) {
+              const minVal = parseInt(filters.salaryMin.replace('k', '')) * 1000;
+              const jobSalary = job.salary ? parseInt(job.salary.replace(/[^0-9]/g, '')) : 0;
+              if (jobSalary < minVal) return false;
+          }
+
+          // Temporal Filter
+          if (filters.postedDate !== 'All') {
+              if (filters.postedDate === '24h' && !job.postedAt.includes('h')) return false;
+              if (filters.postedDate === '7d' && job.postedAt.includes('m')) return false; // Simple logic for mock
+          }
+
           return true;
       });
 
@@ -84,6 +99,9 @@ const JobAggregator: React.FC = () => {
 
   const toggleFilter = (category: keyof AdvancedFilters, value: string) => {
     setFilters(prev => {
+        if (category === 'postedDate') return { ...prev, postedDate: value };
+        if (category === 'salaryMin') return { ...prev, salaryMin: value };
+
         const current = prev[category] as string[];
         const updated = current.includes(value) 
             ? current.filter(v => v !== value)
@@ -102,6 +120,7 @@ const JobAggregator: React.FC = () => {
     });
     setSearchQuery('');
     setLocationQuery('');
+    handleSearch();
   };
 
   const matchedCandidates = useMemo(() => {
@@ -270,7 +289,7 @@ const JobAggregator: React.FC = () => {
                                 <TagButton 
                                     key={p} 
                                     active={filters.postedDate === p} 
-                                    onClick={() => setFilters({...filters, postedDate: p})} 
+                                    onClick={() => toggleFilter('postedDate', p)} 
                                     label={p} 
                                 />
                             ))}
@@ -513,12 +532,6 @@ const JobAggregator: React.FC = () => {
   );
 };
 
-/* 
- * HELPER COMPONENTS
- * Properly typed as React.FC to handle 'key' and standard React props in maps.
- */
-
-// Fix: Use React.FC typing to resolve 'key' property errors in mapped lists
 const TagButton: React.FC<{ active: boolean; onClick: () => void; label: string }> = ({ active, onClick, label }) => (
     <button 
         onClick={onClick}
@@ -532,7 +545,6 @@ const TagButton: React.FC<{ active: boolean; onClick: () => void; label: string 
     </button>
 );
 
-// Fix: Use React.FC typing to resolve 'key' property errors in mapped lists
 const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, onRemove }) => (
     <span className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-700 border border-brand-100 rounded-lg text-[10px] font-black uppercase tracking-widest">
         {label}
@@ -542,7 +554,6 @@ const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, 
     </span>
 );
 
-// Fix: Use React.FC typing for consistency and correctness
 const InfoTag: React.FC<{ icon: any; text: string; highlighted?: boolean }> = ({ icon, text, highlighted }) => (
   <span className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
     highlighted 
@@ -553,7 +564,6 @@ const InfoTag: React.FC<{ icon: any; text: string; highlighted?: boolean }> = ({
   </span>
 );
 
-// Fix: Use React.FC typing for consistency and correctness
 const FilterButton: React.FC<{ active: boolean; onClick: () => void; label: string; icon?: React.ReactNode }> = ({ active, onClick, label, icon }) => (
   <button 
       onClick={onClick}

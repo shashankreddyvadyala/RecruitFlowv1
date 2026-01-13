@@ -60,45 +60,9 @@ export const MOCK_ACTIVITIES: Activity[] = [
     type: 'Email',
     subject: 'Outreach Sent',
     content: 'Initial AI sequence triggered for Sarah Chen regarding Senior React Engineer role.',
-    timestamp: '2024-05-20T14:30:00Z',
+    timestamp: new Date().toISOString(),
     author: 'AI Outreach Bot',
     entityId: 'c1'
-  },
-  {
-    id: 'act_2',
-    type: 'Call',
-    subject: 'Screening Completed',
-    content: 'Autonomous voice agent completed 15-minute technical screen with Sarah Chen. Technical score: 92/100.',
-    timestamp: '2024-05-20T10:00:00Z',
-    author: 'Voice AI Agent',
-    entityId: 'c1'
-  },
-  {
-    id: 'act_3',
-    type: 'StageChange',
-    subject: 'Moved to Final Interview',
-    content: 'Alex Morgan approved screening results and moved Marcus Reynolds to Final Interview stage.',
-    timestamp: '2024-05-19T16:45:00Z',
-    author: 'Alex Morgan',
-    entityId: 'c2'
-  },
-  {
-    id: 'act_4',
-    type: 'Meeting',
-    subject: 'Hiring Manager Review',
-    content: 'Client feedback session completed for the Product Designer role. Elena Vovas is top priority.',
-    timestamp: '2024-05-19T09:15:00Z',
-    author: 'Sarah Jenkins',
-    entityId: 'c3'
-  },
-  {
-    id: 'act_5',
-    type: 'Note',
-    subject: 'Salary Expectations',
-    content: 'Candidate mentioned they are looking for $180k+ base. Need to check client budget.',
-    timestamp: '2024-05-18T11:20:00Z',
-    author: 'Tom Harris',
-    entityId: 'c2'
   }
 ];
 
@@ -110,26 +74,70 @@ export const MOCK_INTERVIEWS: Interview[] = [
     jobId: 'j1',
     jobTitle: 'Senior React Engineer',
     interviewerName: 'Alex Morgan',
-    startTime: new Date(Date.now() + 86400000).toISOString(), // Tomorrow
+    startTime: new Date(Date.now() + 86400000).toISOString(),
     endTime: new Date(Date.now() + 86400000 + 3600000).toISOString(),
     location: 'https://meet.google.com/abc-defg-hij',
     status: 'Scheduled',
     type: 'Technical',
     notes: 'Technical architecture deep dive.'
+  }
+];
+
+export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
+  {
+    id: 'ej1',
+    title: 'Staff Software Engineer, AI Platform',
+    company: 'Anthropic',
+    location: 'San Francisco, CA',
+    postedAt: '2h ago',
+    source: 'LinkedIn',
+    url: '#',
+    type: 'Full-time',
+    salary: '$180k - $250k'
   },
   {
-    id: 'int_2',
-    candidateId: 'c2',
-    candidateName: 'Marcus Reynolds',
-    jobId: 'j1',
-    jobTitle: 'Senior React Engineer',
-    interviewerName: 'Sarah Jenkins',
-    startTime: new Date(Date.now() - 86400000).toISOString(), // Yesterday
-    endTime: new Date(Date.now() - 86400000 + 3600000).toISOString(),
-    location: 'https://meet.google.com/xyz-pdq-rst',
-    status: 'Completed',
-    type: 'Technical',
-    notes: 'Candidate showed great cultural fit. Strong coding skills.'
+    id: 'ej2',
+    title: 'Senior Frontend Engineer',
+    company: 'Vercel',
+    location: 'Remote',
+    postedAt: '5h ago',
+    source: 'Indeed',
+    url: '#',
+    type: 'Full-time',
+    salary: '$160k - $210k'
+  },
+  {
+    id: 'ej3',
+    title: 'Principal Product Designer',
+    company: 'Linear',
+    location: 'Remote',
+    postedAt: '1d ago',
+    source: 'Dribbble',
+    url: '#',
+    type: 'Full-time',
+    salary: '$190k - $240k'
+  },
+  {
+    id: 'ej4',
+    title: 'DevOps Architect',
+    company: 'HashiCorp',
+    location: 'Hybrid',
+    postedAt: '3d ago',
+    source: 'Dice',
+    url: '#',
+    type: 'Contract',
+    salary: '$220k - $280k'
+  },
+  {
+    id: 'ej5',
+    title: 'Fullstack Engineer (Typescript)',
+    company: 'Stripe',
+    location: 'Dublin, Ireland',
+    postedAt: '12h ago',
+    source: 'LinkedIn',
+    url: '#',
+    type: 'Full-time',
+    salary: '$140k - $190k'
   }
 ];
 
@@ -146,126 +154,31 @@ export const MOCK_CANDIDATES: Candidate[] = [
     skills: [
       { name: 'React', years: 6 },
       { name: 'TypeScript', years: 5 },
-      { name: 'Node.js', years: 4 },
-      { name: 'AWS', years: 3 }
+      { name: 'Node.js', years: 4 }
     ],
     lastActivity: 'AI Call completed 2h ago',
     avatarUrl: 'https://picsum.photos/100/100?random=1',
-    aiSummary: 'Strong technical depth in frontend architecture. Communication score 9/10.',
-    portalToken: 't123_sarah',
-    notes: 'Highly recommended by former colleague. Great with architectural tradeoffs.',
-    preferredRoles: ['Senior Frontend Engineer', 'Fullstack Developer'],
-    preferredLocations: ['Remote', 'San Francisco', 'New York'],
-    employmentType: 'Full-time',
-    workMode: 'Remote',
-    salaryExpectation: '$180k - $210k',
-    availability: 'Immediate',
-    yearsOfExperience: 8,
-    education: [
-      { degree: 'B.S. Computer Science', institution: 'UC Berkeley', year: '2016' },
-      { degree: 'M.S. Software Engineering', institution: 'Stanford University', year: '2018' }
-    ],
-    resumes: [
-      { id: 'res_1', name: 'sarah_chen_cv_2025.pdf', url: '#', updatedAt: '2025-01-15T10:00:00Z', type: 'PDF' },
-      { id: 'res_2', name: 'sarah_chen_v1_legacy.pdf', url: '#', updatedAt: '2024-11-02T14:30:00Z', type: 'PDF' }
-    ],
     isOpenToWork: true,
+    sharedJobIds: ['ej1', 'ej2'],
     applicationHistory: [
       {
         id: 'hist_1',
-        jobTitle: 'Senior Frontend Architect',
+        jobTitle: 'Lead Frontend Architect',
         company: 'Stripe',
-        status: 'Rejected',
-        appliedDate: '2024-11-12',
-        outcomeDate: '2024-12-05',
-        notes: 'REASON: Candidate passed all technical rounds but selected another candidate with more specific experience in global payment regulations.'
+        status: 'In Progress',
+        appliedDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 4 days ago
+        notes: 'Technical assessment passed. Moving to hiring manager review.'
       },
       {
         id: 'hist_2',
-        jobTitle: 'Staff Engineer',
+        jobTitle: 'Senior Systems Engineer',
         company: 'Vercel',
-        status: 'Withdrawn',
-        appliedDate: '2025-01-02',
-        notes: 'REASON: Candidate withdrew during offer stage due to location requirements change on the employer side.'
+        status: 'Hired',
+        appliedDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 45 days ago
+        outcomeDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 days ago
+        notes: 'REASON: Candidate demonstrated exceptional proficiency in distributed systems and high-scale edge deployment.'
       }
     ]
-  },
-  {
-    id: 'c2',
-    firstName: 'Marcus',
-    lastName: 'Reynolds',
-    email: 'm.reynolds@example.com',
-    role: 'Senior React Engineer',
-    status: 'Active',
-    stageId: 's2',
-    matchScore: 85,
-    skills: [
-      { name: 'JavaScript', years: 7 },
-      { name: 'Vue', years: 3 },
-      { name: 'Firebase', years: 2 }
-    ],
-    lastActivity: 'Email opened 1d ago',
-    avatarUrl: 'https://picsum.photos/100/100?random=2',
-    aiSummary: 'Good generalist, but lacks specific TypeScript experience needed for senior role.',
-    portalToken: 't123_marcus',
-    notes: 'Interested in transitioning from Vue to React. Willing to learn fast.',
-    preferredRoles: ['React Developer', 'Vue Developer'],
-    preferredLocations: ['London', 'Hybrid'],
-    employmentType: 'Contract',
-    workMode: 'Hybrid',
-    salaryExpectation: '£600/day',
-    availability: '2 weeks notice',
-    yearsOfExperience: 5,
-    education: [
-      { degree: 'B.A. Graphic Design', institution: 'University of Arts London', year: '2019' }
-    ],
-    resumes: [
-      { id: 'res_3', name: 'marcus_reynolds_cv.pdf', url: '#', updatedAt: '2025-02-10T09:00:00Z', type: 'PDF' }
-    ],
-    isOpenToWork: false,
-    applicationHistory: [
-      {
-        id: 'hist_3',
-        jobTitle: 'Lead Vue Developer',
-        company: 'Deliveroo',
-        status: 'Rejected',
-        appliedDate: '2024-09-15',
-        outcomeDate: '2024-10-01',
-        notes: 'REASON: Insufficient experience with large-scale TypeScript migrations which was a core project requirement.'
-      }
-    ]
-  },
-  {
-    id: 'c3',
-    firstName: 'Elena',
-    lastName: 'Vovas',
-    email: 'elena.v@example.com',
-    role: 'Product Designer',
-    status: 'New',
-    stageId: 's1',
-    matchScore: 78,
-    skills: [
-      { name: 'Figma', years: 5 },
-      { name: 'UI/UX', years: 6 },
-      { name: 'User Research', years: 3 }
-    ],
-    lastActivity: 'Imported via LinkedIn',
-    avatarUrl: 'https://picsum.photos/100/100?random=3',
-    notes: 'Excellent portfolio. Previously worked at high-growth fintech startups.',
-    preferredRoles: ['Senior Product Designer', 'UX Lead'],
-    preferredLocations: ['Berlin', 'Amsterdam'],
-    employmentType: 'Full-time',
-    workMode: 'On-site',
-    salaryExpectation: '€95k+',
-    availability: '1 month notice',
-    yearsOfExperience: 6,
-    education: [
-      { degree: 'B.Des. Interaction Design', institution: 'TU Delft', year: '2017' }
-    ],
-    resumes: [
-      { id: 'res_4', name: 'elena_vovas_portfolio_cv.pdf', url: '#', updatedAt: '2025-03-01T11:20:00Z', type: 'PDF' }
-    ],
-    isOpenToWork: true
   }
 ];
 
@@ -274,38 +187,11 @@ export const MOCK_JOBS: Job[] = [
     id: 'j1',
     title: 'Senior React Engineer',
     client: 'TechFlow Inc',
-    clientId: 'client_1',
     department: 'Engineering',
     location: 'Remote',
     candidatesCount: 142,
     pipeline: MOCK_PIPELINE,
     status: 'Active'
-  },
-  {
-    id: 'j2',
-    title: 'Product Designer',
-    client: 'Designify',
-    clientId: 'client_2',
-    department: 'Design',
-    location: 'New York, NY',
-    candidatesCount: 56,
-    pipeline: MOCK_PIPELINE,
-    status: 'Active'
-  }
-];
-
-export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
-  {
-    id: 'ej1',
-    title: 'Staff Software Engineer, AI Platform',
-    company: 'Anthropic',
-    location: 'San Francisco, CA',
-    postedAt: '2 days ago',
-    source: 'LinkedIn',
-    url: '#',
-    type: 'Hybrid',
-    logoUrl: 'https://logo.clearbit.com/anthropic.com',
-    salary: '$180k - $250k'
   }
 ];
 
@@ -315,12 +201,7 @@ export const MOCK_TALENT_PROFILES: CandidateProfile[] = [
     name: 'James Wilson',
     title: 'Staff Software Engineer',
     experience: 8,
-    skills: [
-      { name: 'Python', years: 6 },
-      { name: 'PyTorch', years: 3 },
-      { name: 'AWS', years: 4 },
-      { name: 'System Design', years: 5 }
-    ],
+    skills: [{ name: 'Python', years: 6 }],
     location: 'San Francisco, CA',
     bio: 'Ex-Google engineer specializing in scalable ML infrastructure.',
     status: 'Open to Work',
