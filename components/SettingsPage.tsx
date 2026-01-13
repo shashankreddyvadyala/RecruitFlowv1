@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Cpu, Palette, Globe, Megaphone, Trash2, Image as ImageIcon, Upload, Mail, Type, User, Briefcase, Sparkles, Fingerprint, Lock } from 'lucide-react';
+import { Save, Cpu, Palette, Globe, Image as ImageIcon, Upload, Lock } from 'lucide-react';
 import { getApiKey, setApiKey } from '../services/externalServices';
 import { useStore } from '../context/StoreContext';
 import { UserRole } from '../types';
 
 const SettingsPage: React.FC = () => {
-  const { branding, updateBranding, recruiterSettings, updateRecruiterSettings, userRole, notify } = useStore();
+  const { branding, updateBranding, userRole, notify } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [keys, setKeys] = useState({
     BRIGHTDATA: '',
@@ -17,7 +17,6 @@ const SettingsPage: React.FC = () => {
   });
 
   const isOwner = userRole === UserRole.Owner;
-  const isRecruiter = userRole === UserRole.Recruiter;
 
   useEffect(() => {
     setKeys({
@@ -63,8 +62,8 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 font-sans">
       
-      {/* Agency Branding (Owner & Recruiter) */}
-      {(isOwner || isRecruiter) && (
+      {/* Agency Branding (Owner Only) */}
+      {isOwner && (
         <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-sm border border-slate-200">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-12 gap-6">
             <div>
@@ -73,31 +72,23 @@ const SettingsPage: React.FC = () => {
                   Agency Identity & Branding
               </h2>
               <p className="text-slate-500 font-medium mt-2">
-                {isOwner ? "Customize your professional presence across all communication channels." : "Review agency-wide identity and branding settings."}
+                Customize your professional presence across the platform.
               </p>
             </div>
-            {isOwner ? (
-                <button 
-                    onClick={handleBrandingSave}
-                    className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl active:scale-95"
-                >
-                   <Save size={18} /> Update Branding
-                </button>
-            ) : (
-                <div className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-400 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
-                    <Lock size={14} /> Locked by Admin
-                </div>
-            )}
+            <button 
+                onClick={handleBrandingSave}
+                className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl active:scale-95"
+            >
+                <Save size={18} /> Update Branding
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-12">
-            <div className={`xl:col-span-7 space-y-8 ${!isOwner ? 'opacity-70 pointer-events-none' : ''}`}>
+          <div className="space-y-8 max-w-3xl">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Agency Name</label>
                     <input 
                         type="text" 
-                        readOnly={!isOwner}
                         value={branding.companyName}
                         onChange={(e) => updateBranding({ companyName: e.target.value })}
                         className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 font-bold shadow-inner"
@@ -108,7 +99,6 @@ const SettingsPage: React.FC = () => {
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Brand Tagline</label>
                     <input 
                         type="text" 
-                        readOnly={!isOwner}
                         value={branding.tagline}
                         onChange={(e) => updateBranding({ tagline: e.target.value })}
                         className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 font-bold shadow-inner"
@@ -125,7 +115,6 @@ const SettingsPage: React.FC = () => {
                             <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input 
                                 type="text" 
-                                readOnly={!isOwner}
                                 value={branding.logoUrl}
                                 onChange={(e) => updateBranding({ logoUrl: e.target.value })}
                                 className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 font-bold text-sm shadow-inner"
@@ -139,76 +128,31 @@ const SettingsPage: React.FC = () => {
                         )}
                     </div>
                     
-                    {isOwner && (
-                        <div className="flex items-center gap-4">
-                            <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                className="hidden" 
-                                accept="image/*" 
-                                onChange={handleFileUpload}
-                            />
-                            <button 
-                                onClick={triggerFileUpload}
-                                className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
-                            >
-                                <Upload size={16} /> Upload Local File
-                            </button>
-                            {branding.logoUrl && (
-                                <button 
-                                    onClick={() => updateBranding({ logoUrl: '' })}
-                                    className="text-red-500 hover:text-red-600 text-[10px] font-black uppercase tracking-widest"
-                                >
-                                    Remove Logo
-                                </button>
-                            )}
-                        </div>
-                    )}
-                  </div>
-               </div>
-
-               <div className="pt-8 border-t border-slate-100">
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
-                     <Mail size={16} className="text-brand-600" /> Outreach Settings
-                  </h3>
-                  <div className="space-y-6">
-                     <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Sender Email Address</label>
+                    <div className="flex items-center gap-4">
                         <input 
-                            type="email" 
-                            readOnly={!isOwner}
-                            value={branding.senderEmail || ''}
-                            onChange={(e) => updateBranding({ senderEmail: e.target.value })}
-                            className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 font-bold shadow-inner"
-                            placeholder="outreach@youragency.com"
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            accept="image/*" 
+                            onChange={handleFileUpload}
                         />
-                     </div>
-                     <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Email Signature</label>
-                        <textarea 
-                            readOnly={!isOwner}
-                            value={branding.signature || ''}
-                            onChange={(e) => updateBranding({ signature: e.target.value })}
-                            rows={4}
-                            className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 font-medium shadow-inner resize-none text-sm"
-                            placeholder="Your professional signature..."
-                        />
-                     </div>
+                        <button 
+                            onClick={triggerFileUpload}
+                            className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
+                        >
+                            <Upload size={16} /> Upload Local File
+                        </button>
+                        {branding.logoUrl && (
+                            <button 
+                                onClick={() => updateBranding({ logoUrl: '' })}
+                                className="text-red-500 hover:text-red-600 text-[10px] font-black uppercase tracking-widest"
+                            >
+                                Remove Logo
+                            </button>
+                        )}
+                    </div>
                   </div>
                </div>
-            </div>
-
-            {/* Branding Preview */}
-            <div className="xl:col-span-5">
-                <div className="sticky top-24 space-y-6">
-                    <SignaturePreview 
-                        companyName={branding.companyName} 
-                        tagline={branding.tagline} 
-                        logoUrl={branding.logoUrl} 
-                        signature={branding.signature || 'Best regards,\nAlex Morgan'} 
-                    />
-                </div>
-            </div>
           </div>
         </div>
       )}
@@ -311,49 +255,5 @@ const SettingsPage: React.FC = () => {
     </div>
   );
 };
-
-const SignaturePreview = ({ companyName, tagline, logoUrl, signature }: any) => (
-    <div className="bg-slate-900 rounded-[2.5rem] p-10 border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-brand-600 rounded-full blur-[100px] opacity-10 -mr-24 -mt-24 pointer-events-none"></div>
-        
-        <p className="text-[10px] font-black text-brand-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
-            <Fingerprint size={20} /> Signature Preview
-        </p>
-
-        <div className="bg-white rounded-3xl shadow-2xl p-8 font-serif">
-            <div className="flex flex-col gap-6">
-                {/* Signature Text Section */}
-                <div className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed italic border-l-2 border-slate-100 pl-6">
-                    {signature}
-                </div>
-                
-                {/* Agency Brand Block */}
-                <div className="flex items-center gap-5 pt-6 border-t border-slate-50">
-                    <div className="w-16 h-16 rounded-[1.25rem] bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0 shadow-inner group">
-                        {logoUrl ? (
-                            <img src={logoUrl} alt="Agency Logo" className="w-full h-full object-contain p-1" />
-                        ) : (
-                            <span className="text-2xl font-black text-brand-600">{companyName[0] || 'R'}</span>
-                        )}
-                    </div>
-                    <div>
-                        <p className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none mb-1">{companyName}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.15em] leading-tight mb-2">{tagline}</p>
-                        <div className="flex gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div className="mt-8 flex items-center justify-center gap-4">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <p className="text-[9px] font-black text-brand-400 uppercase tracking-[0.3em]">Live Synchronization Active</p>
-        </div>
-    </div>
-);
 
 export default SettingsPage;
