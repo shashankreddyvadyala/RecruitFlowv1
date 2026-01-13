@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-// Added missing ChevronRight and LayoutGrid icons to the import list
 import { UploadCloud, CheckCircle, Search, MapPin, Briefcase, Zap, Star, ExternalLink, Send, ArrowRight, Share2, Mail, Sparkles, ShieldCheck, FileCode, TrendingDown, Info, ChevronDown, ChevronUp, Loader2, DollarSign, Eye, FileText, GraduationCap, Award, Clock, ChevronRight, LayoutGrid } from 'lucide-react';
 import { ExternalJob, CandidateProfile, OptimizationInsight, Candidate, Skill, ResumeFile } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -12,29 +11,25 @@ const TalentMatch: React.FC = () => {
   
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'dossier' | 'artifacts' | 'resonance'>('dossier');
+  const [activeSubTab, setActiveSubTab] = useState<'info' | 'docs' | 'matches'>('info');
   
-  // Optimization State
   const [optimizationLoading, setOptimizationLoading] = useState(false);
   const [optimizations, setOptimizations] = useState<OptimizationInsight[]>([]);
   const [expandedOptimization, setExpandedOptimization] = useState<string | null>(null);
 
   const selectedProfile = talentProfiles.find(p => p.id === selectedProfileId) || null;
 
-  // Try to find the full candidate record if it exists to access full resume vault
   const candidateRecord = useMemo(() => {
     if (!selectedProfile) return null;
     return candidates.find(c => `${c.firstName} ${c.lastName}`.toLowerCase() === selectedProfile.name.toLowerCase());
   }, [selectedProfile, candidates]);
 
-  // Resume Stacking & Selection Logic
   const sortedResumes = useMemo(() => {
     if (candidateRecord?.resumes) {
         return [...candidateRecord.resumes].sort((a, b) => 
             new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         );
     }
-    // Fallback to single resume if no candidate record found
     if (selectedProfile?.resumeUrl) {
         return [{
             id: 'legacy_1',
@@ -59,7 +54,6 @@ const TalentMatch: React.FC = () => {
 
   const activeResume = sortedResumes.find(r => r.id === selectedResumeId);
 
-  // FIX: useMemo must be called unconditionally. Logic moved inside the callback.
   const matchedJobs = useMemo(() => {
     if (!selectedProfile) return [];
     
@@ -79,10 +73,10 @@ const TalentMatch: React.FC = () => {
         const targetCandidate = candidateRecord || candidates[0];
         const results = await getHiringOptimization(targetCandidate, job.title, job.location);
         setOptimizations(results);
-        notify("Strategic Protocol Active", "Global tax and compliance optimizations identified.", "success");
+        notify("Analysis Done", "Strategic hiring insights identified.", "success");
     } catch (e) {
         console.error(e);
-        notify("Lab Error", "Failed to retrieve optimization data.", "error");
+        notify("Error", "Failed to retrieve optimization data.", "error");
     } finally {
         setOptimizationLoading(false);
     }
@@ -103,24 +97,24 @@ const TalentMatch: React.FC = () => {
     addActivity({
         id: `opt_${Date.now()}`,
         type: 'Optimization',
-        subject: `Strategic Alignment: ${insight.title}`,
-        content: `Applied fiscal optimization protocol: ${insight.description}. Savings potential tracked.`,
+        subject: `Optimization: ${insight.title}`,
+        content: `Applied strategic insight: ${insight.description}.`,
         timestamp: new Date().toISOString(),
-        author: 'AI Auditor',
+        author: 'AI Tool',
         entityId: targetCandidate.id
     });
 
-    notify("Optimization Synthesized", `Applied ${insight.title} to dossier.`, "success");
+    notify("Applied", `${insight.title} added to profile.`, "success");
   };
 
   const handleUpload = async () => {
     setIsProcessing(true);
     try {
-        const dummyFile = new File(["content"], "new_operative.pdf", { type: "application/pdf" });
+        const dummyFile = new File(["content"], "resume.pdf", { type: "application/pdf" });
         const newProfile = await ResumeParserService.parseResume(dummyFile);
         addTalentProfile(newProfile);
         setSelectedProfileId(newProfile.id);
-        setActiveSubTab('dossier');
+        setActiveSubTab('info');
     } catch(e) {
         console.error("Upload failed", e);
     } finally {
@@ -130,7 +124,6 @@ const TalentMatch: React.FC = () => {
 
   return (
     <div className="flex h-full gap-6 font-sans">
-      {/* Left: Talent Inventory */}
       <div className="w-1/3 flex flex-col gap-4">
         <div 
           onClick={handleUpload}
@@ -139,13 +132,13 @@ const TalentMatch: React.FC = () => {
             <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:bg-white group-hover:text-brand-600 group-hover:shadow-lg transition-all">
                 {isProcessing ? <Loader2 className="animate-spin w-6 h-6 text-brand-600" /> : <UploadCloud size={24} />}
             </div>
-            <h3 className="font-black text-slate-900 uppercase tracking-tight">Provision Record</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ingest Dossier via Neural OCR</p>
+            <h3 className="font-black text-slate-900 uppercase tracking-tight">Add Candidate</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Upload Resume to Analyze</p>
         </div>
 
         <div className="flex-1 bg-white rounded-[2rem] shadow-sm border border-slate-200 flex flex-col overflow-hidden">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                <h3 className="font-black text-slate-900 uppercase tracking-[0.2em] text-[10px]">Talent Inventory</h3>
+                <h3 className="font-black text-slate-900 uppercase tracking-[0.2em] text-[10px]">Candidate Pool</h3>
                 <span className="bg-slate-900 text-white text-[10px] font-black px-2 py-0.5 rounded-lg">{talentProfiles.length}</span>
             </div>
             <div className="overflow-y-auto flex-1 p-4 space-y-3">
@@ -171,11 +164,9 @@ const TalentMatch: React.FC = () => {
         </div>
       </div>
 
-      {/* Right: Detailed Analysis & Matching Engine */}
       <div className="flex-1 flex flex-col gap-6">
         {selectedProfile ? (
             <div className="flex-1 bg-white rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                {/* Profile Header Card */}
                 <div className="p-8 border-b border-slate-100 bg-slate-50/50 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600 rounded-full blur-[100px] opacity-5 -mr-32 -mt-32 pointer-events-none"></div>
                     <div className="flex justify-between items-start relative z-10">
@@ -199,32 +190,29 @@ const TalentMatch: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Sub Tabs */}
                 <div className="flex border-b border-slate-100 px-4">
-                    <TabButton active={activeSubTab === 'dossier'} onClick={() => setActiveSubTab('dossier')} label="Dossier" icon={<LayoutGrid size={14}/>} />
-                    <TabButton active={activeSubTab === 'artifacts'} onClick={() => setActiveSubTab('artifacts')} label="Artifact Vault" icon={<FileText size={14}/>} />
-                    <TabButton active={activeSubTab === 'resonance'} onClick={() => setActiveSubTab('resonance')} label="Market Resonance" icon={<Sparkles size={14}/>} />
+                    <TabButton active={activeSubTab === 'info'} onClick={() => setActiveSubTab('info')} label="Profile Info" icon={<LayoutGrid size={14}/>} />
+                    <TabButton active={activeSubTab === 'docs'} onClick={() => setActiveSubTab('docs')} label="Documents" icon={<FileText size={14}/>} />
+                    <TabButton active={activeSubTab === 'matches'} onClick={() => setActiveSubTab('matches')} label="Job Matches" icon={<Sparkles size={14}/>} />
                 </div>
 
-                {/* Tab Content Area */}
                 <div className="flex-1 overflow-y-auto p-8">
-                    {activeSubTab === 'dossier' ? (
+                    {activeSubTab === 'info' ? (
                         <div className="space-y-8 max-w-4xl">
-                            {/* Summary Cards */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                       <Award size={14} className="text-brand-600" /> Industry Tenure
+                                       <Award size={14} className="text-brand-600" /> Work History
                                     </p>
                                     <div className="flex items-baseline gap-2">
                                         <span className="text-4xl font-black text-slate-900 tracking-tighter">{selectedProfile.experience}</span>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate Years</span>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Years</span>
                                     </div>
                                 </div>
                                 
                                 <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                       <GraduationCap size={14} className="text-brand-600" /> Academic Background
+                                       <GraduationCap size={14} className="text-brand-600" /> Education
                                     </p>
                                     {candidateRecord?.education && candidateRecord.education.length > 0 ? (
                                         <div className="space-y-4">
@@ -236,14 +224,13 @@ const TalentMatch: React.FC = () => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-[10px] font-bold text-slate-300 uppercase italic">Detailed academic data not provisioned</p>
+                                        <p className="text-[10px] font-bold text-slate-300 uppercase italic">No education history listed</p>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Tech Stack Breakdown */}
                             <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-inner bg-slate-50/30">
-                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6">Neural Skill Profile</h3>
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6">Key Skills</h3>
                                 <div className="flex flex-wrap gap-3">
                                     {selectedProfile.skills.map(skill => (
                                         <div key={skill.name} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-brand-500 transition-all group/skill">
@@ -255,20 +242,18 @@ const TalentMatch: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Professional Bio */}
                             <div className="bg-white p-8 rounded-[2rem] border border-slate-100">
                                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
-                                    <Info size={14} className="text-brand-600"/> Executive Summary
+                                    <Info size={14} className="text-brand-600"/> Summary
                                 </h3>
                                 <p className="text-sm text-slate-600 leading-relaxed font-medium">
                                     {selectedProfile.bio}
                                 </p>
                             </div>
                         </div>
-                    ) : activeSubTab === 'artifacts' ? (
+                    ) : activeSubTab === 'docs' ? (
                         <div className="h-full flex flex-col gap-6">
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1 min-h-[500px]">
-                                {/* Stack Selection */}
                                 <div className="lg:col-span-4 space-y-3">
                                     {sortedResumes.length > 0 ? (
                                         sortedResumes.map((resume, idx) => (
@@ -290,13 +275,13 @@ const TalentMatch: React.FC = () => {
                                                             {resume.name}
                                                         </p>
                                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                            Ingested: {new Date(resume.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            Uploaded: {new Date(resume.updatedAt).toLocaleDateString()}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 {idx === 0 && (
                                                     <div className="absolute top-0 right-0 px-3 py-1 bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest rounded-bl-xl shadow-sm">
-                                                        Latest
+                                                        Primary
                                                     </div>
                                                 )}
                                             </div>
@@ -304,12 +289,11 @@ const TalentMatch: React.FC = () => {
                                     ) : (
                                         <div className="p-10 text-center bg-slate-50 rounded-[2rem] border border-slate-100 border-dashed">
                                             <FileCode size={40} className="text-slate-200 mx-auto mb-4" />
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No documentation provisioned</p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No resumes found</p>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Preview Frame */}
                                 <div className="lg:col-span-8 bg-slate-900 rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col relative overflow-hidden">
                                     {activeResume ? (
                                         <>
@@ -339,16 +323,16 @@ const TalentMatch: React.FC = () => {
                                                             </h2>
                                                             <div className="pl-4 border-l-2 border-slate-100">
                                                                 <p className="text-xs font-black text-slate-900 uppercase tracking-tight">Principal Systems Engineer</p>
-                                                                <p className="text-[10px] text-slate-400 italic mb-2 uppercase tracking-widest">2021 - Present • Global Node Systems</p>
+                                                                <p className="text-[10px] text-slate-400 italic mb-2 uppercase tracking-widest">2021 - Present</p>
                                                                 <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                                                                    Spearheaded architecture for high-resonance matching algorithms. Optimized processing latency by 45% using distributed neural caching.
+                                                                    Designed architecture for high-scale matching algorithms.
                                                                 </p>
                                                             </div>
                                                         </section>
 
                                                         <section>
                                                             <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
-                                                                <Zap size={12} className="text-brand-600" /> Technical Capabilities
+                                                                <Zap size={12} className="text-brand-600" /> Skills
                                                             </h2>
                                                             <div className="flex flex-wrap gap-2">
                                                                 {selectedProfile.skills.map(s => (
@@ -365,7 +349,7 @@ const TalentMatch: React.FC = () => {
                                             <div className="w-20 h-20 bg-white/5 rounded-[2rem] border border-white/10 flex items-center justify-center text-slate-500 mb-6 shadow-2xl">
                                                 <Eye size={32} />
                                             </div>
-                                            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Select an artifact to initiate preview</p>
+                                            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Select a document to preview</p>
                                         </div>
                                     )}
                                 </div>
@@ -377,9 +361,9 @@ const TalentMatch: React.FC = () => {
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
                                         <Sparkles className="text-purple-500" size={24} />
-                                        Neural Resonance Feed
+                                        Smart Matches
                                     </h3>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Real-time market matching based on current profile</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Jobs that match this candidate's profile</p>
                                 </div>
                             </div>
 
@@ -412,20 +396,19 @@ const TalentMatch: React.FC = () => {
                                                     onClick={() => handleRunOptimization(job)}
                                                     className="mt-3 text-[10px] font-black text-brand-600 uppercase tracking-widest flex items-center gap-2 hover:text-brand-800 bg-brand-50/50 px-3 py-1.5 rounded-xl hover:bg-brand-100 transition-all"
                                                 >
-                                                    <Zap size={14} fill="currentColor" /> Strategic Lab
+                                                    <Zap size={14} fill="currentColor" /> Strategic Insights
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {/* Optimization Intelligence Module (Conditional) */}
                                         {optimizations.length > 0 && (
                                             <div className="mb-8 bg-slate-900 rounded-[2rem] overflow-hidden border border-brand-500/30 animate-in zoom-in-95 shadow-2xl relative">
                                                 <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[80px] opacity-10 pointer-events-none"></div>
                                                 <div className="p-6 bg-brand-600/10 flex items-center justify-between border-b border-white/5">
                                                     <h5 className="text-[11px] font-black text-brand-400 uppercase tracking-[0.4em] flex items-center gap-3">
-                                                        <ShieldCheck size={18} /> Optimization Protocol
+                                                        <ShieldCheck size={18} /> Hiring Optimization
                                                     </h5>
-                                                    <span className="text-[9px] font-black text-white bg-emerald-500 px-3 py-1 rounded-full shadow-glow uppercase tracking-widest">Active Synthesis</span>
+                                                    <span className="text-[9px] font-black text-white bg-emerald-500 px-3 py-1 rounded-full shadow-glow uppercase tracking-widest">Active Analysis</span>
                                                 </div>
                                                 <div className="p-6 space-y-4">
                                                     {optimizations.map((insight) => (
@@ -448,7 +431,7 @@ const TalentMatch: React.FC = () => {
                                                                         <p className="text-sm font-black text-white uppercase tracking-tight leading-none group-hover/opt:text-brand-400 transition-colors">{insight.title}</p>
                                                                         {insight.savingsPotential && (
                                                                             <p className="text-[10px] font-bold text-emerald-400 uppercase mt-2 tracking-widest flex items-center gap-2">
-                                                                                <DollarSign size={10} /> Yield Opportunity: {insight.savingsPotential}
+                                                                                <DollarSign size={10} /> Potential Savings: {insight.savingsPotential}
                                                                             </p>
                                                                         )}
                                                                     </div>
@@ -462,7 +445,6 @@ const TalentMatch: React.FC = () => {
                                                                 <div className="px-5 pb-6 animate-in slide-in-from-top-4 duration-500 border-t border-white/5 pt-4">
                                                                     <p className="text-sm text-slate-400 leading-relaxed font-medium mb-6">
                                                                         {insight.description}
-                                                                        {insight.htsCode && <span className="block mt-3 font-black text-purple-400 uppercase tracking-widest text-xs bg-purple-400/10 self-start px-3 py-1 rounded-lg border border-purple-400/20">HTS Node: {insight.htsCode}</span>}
                                                                     </p>
                                                                     <button 
                                                                         onClick={() => applyOptimization(insight)}
@@ -481,11 +463,11 @@ const TalentMatch: React.FC = () => {
                                         <div className="pt-8 border-t border-slate-50 flex items-center justify-between relative z-10">
                                             <div className="flex gap-4">
                                                 <button className="px-8 py-3 bg-slate-900 text-white text-[10px] rounded-2xl font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl shadow-slate-900/10 flex items-center gap-2 group/btn">
-                                                    <Send size={14} className="group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" /> Transmit Dossier
+                                                    <Send size={14} className="group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" /> Share Job
                                                 </button>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Neural Verification Matrix Ready</span>
+                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">AI Verified Match</span>
                                                 <ShieldCheck size={14} className="text-emerald-500" />
                                             </div>
                                         </div>
@@ -502,9 +484,9 @@ const TalentMatch: React.FC = () => {
                 <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center text-slate-200 mb-8 border border-slate-100 group-hover:scale-110 group-hover:rotate-6 transition-all duration-700">
                     <Search size={48} />
                 </div>
-                <h3 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-4">Select Target Operative</h3>
-                <p className="text-slate-500 max-w-sm mx-auto font-medium mb-12 leading-relaxed">Access the Talent Inventory to initiate high-resonance matching protocols and fiscal optimization sequences.</p>
-                <button onClick={handleUpload} className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.4em] shadow-2xl hover:bg-brand-600 transition-all active:scale-95">Provision New Node</button>
+                <h3 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-4">Select a Candidate</h3>
+                <p className="text-slate-500 max-w-sm mx-auto font-medium mb-12 leading-relaxed">Choose a candidate from the pool to view matches and optimize hiring.</p>
+                <button onClick={handleUpload} className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.4em] shadow-2xl hover:bg-brand-600 transition-all active:scale-95">Add New Candidate</button>
             </div>
         )}
       </div>

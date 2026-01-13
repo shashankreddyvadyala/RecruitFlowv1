@@ -19,7 +19,6 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
     skills: [] as Skill[],
     experience: '5',
     avatarUrl: `https://picsum.photos/200/200?u=${Math.random()}`,
-    // New Preference Fields
     preferredRoles: '',
     preferredLocations: '',
     employmentType: 'Full-time',
@@ -79,7 +78,6 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans relative overflow-hidden">
-      {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
         <div className="absolute -top-20 -left-20 w-96 h-96 bg-brand-400 rounded-full blur-[120px]"></div>
         <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-purple-400 rounded-full blur-[120px]"></div>
@@ -87,7 +85,6 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
       <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl border border-slate-100 flex flex-col md:flex-row overflow-hidden relative z-10">
         
-        {/* Left: Progress Sidebar */}
         <div className="w-full md:w-80 bg-slate-900 p-10 text-white flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-12">
@@ -96,16 +93,16 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
             </div>
 
             <h2 className="text-3xl font-black uppercase tracking-tighter leading-none mb-8">
-              Complete <br/> Your Profile
+              Set Up <br/> Your Profile
             </h2>
 
             <div className="space-y-6">
-              <StepIndicator num={1} label="Basic Identity" active={step === 1} completed={step > 1} />
-              <StepIndicator num={2} label="Professional Bio" active={step === 2} completed={step > 2} />
+              <StepIndicator num={1} label="Basic Info" active={step === 1} completed={step > 1} />
+              <StepIndicator num={2} label="About Me" active={step === 2} completed={step > 2} />
               {role === UserRole.Candidate && (
                 <>
-                  <StepIndicator num={3} label="Career Goals" active={step === 3} completed={step > 3} />
-                  <StepIndicator num={4} label="Skills & Education" active={step === 4} completed={step > 4} />
+                  <StepIndicator num={3} label="Preferences" active={step === 3} completed={step > 3} />
+                  <StepIndicator num={4} label="Skills & History" active={step === 4} completed={step > 4} />
                 </>
               )}
             </div>
@@ -117,46 +114,45 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">AI Assistant</span>
              </div>
              <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
-               Your profile will be automatically enriched by our AI agents to help you stand out to {role === UserRole.Candidate ? 'recruiters' : 'clients'}.
+               Your profile helps our AI find the best job matches for your career goals.
              </p>
           </div>
         </div>
 
-        {/* Right: Form Area */}
         <div className="flex-1 p-8 md:p-12 flex flex-col">
           <div className="flex-1 overflow-y-auto max-h-[600px] pr-2">
             {step === 1 && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">The Essentials</h3>
-                <p className="text-slate-500 text-sm mb-8 font-medium">Let's start with your professional identity.</p>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Basic Info</h3>
+                <p className="text-slate-500 text-sm mb-8 font-medium">Let's start with who you are.</p>
                 
                 <div className="flex flex-col items-center mb-10">
                    <div className="relative group">
-                     <img src={formData.avatarUrl} className="w-24 h-24 rounded-3xl object-cover shadow-xl border-4 border-slate-50 transition-transform group-hover:scale-105" alt="Me" />
+                     <img src={formData.avatarUrl} className="w-24 h-24 rounded-3xl object-cover shadow-xl border-4 border-slate-50 transition-transform group-hover:scale-105" alt="Profile" />
                      <button className="absolute -bottom-2 -right-2 p-2 bg-brand-600 text-white rounded-xl shadow-lg hover:bg-brand-700 transition-colors">
                         <Camera size={16} />
                      </button>
                    </div>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">Profile Portrait</p>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">Upload Photo</p>
                 </div>
 
                 <div className="space-y-6 max-w-md mx-auto">
                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Full Display Name</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Full Name</label>
                       <input 
                         value={formData.name}
                         onChange={e => setFormData({...formData, name: e.target.value})}
                         className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
-                        placeholder="e.g. Sarah Chen"
+                        placeholder="Sarah Chen"
                       />
                    </div>
                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Current Job Title</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Job Title</label>
                       <input 
                         value={formData.title}
                         onChange={e => setFormData({...formData, title: e.target.value})}
                         className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
-                        placeholder={role === UserRole.Recruiter ? "e.g. Senior Technical Recruiter" : "e.g. Lead React Developer"}
+                        placeholder={role === UserRole.Recruiter ? "Technical Recruiter" : "Lead React Developer"}
                       />
                    </div>
                 </div>
@@ -165,23 +161,23 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
             {step === 2 && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Professional Bio</h3>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">My Bio</h3>
                 <p className="text-slate-500 text-sm mb-8 font-medium">Describe your background and expertise.</p>
                 
                 <div className="space-y-6 max-w-md mx-auto">
                    <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">About You</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">About Me</label>
                       <textarea 
                         value={formData.bio}
                         onChange={e => setFormData({...formData, bio: e.target.value})}
                         rows={6}
                         className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner resize-none"
-                        placeholder="I'm a passionate professional with..."
+                        placeholder="I have over 10 years of experience in..."
                       />
                    </div>
                    <div className="bg-brand-50 p-4 rounded-2xl border border-brand-100">
                       <p className="text-[10px] font-bold text-brand-700 uppercase tracking-wide leading-relaxed">
-                        Tip: Highlight specific results or industries you've worked in. Our AI will use this to find the best job matches.
+                        Tip: Be specific about your achievements. Recruiters love seeing data and results!
                       </p>
                    </div>
                 </div>
@@ -190,8 +186,8 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
             {step === 3 && role === UserRole.Candidate && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Career Compass</h3>
-                <p className="text-slate-500 text-sm mb-8 font-medium">Tell us exactly what kind of opportunities you're seeking.</p>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Job Preferences</h3>
+                <p className="text-slate-500 text-sm mb-8 font-medium">What kind of work are you looking for?</p>
                 
                 <div className="space-y-6 max-w-md mx-auto">
                    <div className="grid grid-cols-1 gap-6">
@@ -203,25 +199,25 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                            value={formData.preferredRoles}
                            onChange={e => setFormData({...formData, preferredRoles: e.target.value})}
                            className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
-                           placeholder="e.g. Staff Engineer, Architect (Comma separated)"
+                           placeholder="Software Engineer, Team Lead"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
-                           <MapPin size={14} /> Location Preferences
+                           <MapPin size={14} /> Preferred Locations
                         </label>
                         <input 
                            value={formData.preferredLocations}
                            onChange={e => setFormData({...formData, preferredLocations: e.target.value})}
                            className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
-                           placeholder="e.g. London, Austin, Remote"
+                           placeholder="London, Remote"
                         />
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4">
                          <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
-                               <Timer size={14} /> Work Mode
+                               <Timer size={14} /> Work Type
                             </label>
                             <select 
                                value={formData.workMode}
@@ -236,7 +232,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                          </div>
                          <div>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
-                               <Zap size={14} /> Agreement
+                               <Zap size={14} /> Employment
                             </label>
                             <select 
                                value={formData.employmentType}
@@ -274,7 +270,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                                <option>Immediate</option>
                                <option>2 Weeks</option>
                                <option>1 Month</option>
-                               <option>Exploring</option>
+                               <option>Just Browsing</option>
                             </select>
                          </div>
                       </div>
@@ -285,13 +281,13 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
 
             {((role === UserRole.Candidate && step === 4) || (role !== UserRole.Candidate && step === 3)) && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Experience & Education</h3>
-                <p className="text-slate-500 text-sm mb-8 font-medium">Final details to complete your application readiness.</p>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">History & Skills</h3>
+                <p className="text-slate-500 text-sm mb-8 font-medium">Add the final details to your profile.</p>
                 
                 <div className="space-y-8 max-w-md mx-auto">
                    <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
-                         <Award size={14} /> Overall Industry Experience (Years)
+                         <Award size={14} /> Total Experience (Years)
                       </label>
                       <input 
                         type="number"
@@ -301,17 +297,16 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                       />
                    </div>
 
-                   {/* NEW: Granular Skills Experience */}
                    <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
-                         <Zap size={14} /> Skills & Technology Experience
+                         <Zap size={14} /> My Skills
                       </label>
                       <div className="space-y-3 mb-4">
                         {formData.skills.map((skill, idx) => (
                             <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center group">
                                 <div>
                                     <p className="text-xs font-black text-slate-900 uppercase leading-none">{skill.name}</p>
-                                    <p className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mt-1">{skill.years} Years Exp</p>
+                                    <p className="text-[10px] font-bold text-brand-600 uppercase tracking-widest mt-1">{skill.years} Years</p>
                                 </div>
                                 <button onClick={() => removeSkill(idx)} className="text-slate-300 hover:text-red-500 transition-colors">
                                     <Trash2 size={14} />
@@ -323,14 +318,14 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                          <div className="grid grid-cols-3 gap-2">
                             <input 
                                 placeholder="Skill Name" 
-                                className="col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                className="col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" 
                                 value={newSkill.name}
                                 onChange={e => setNewSkill({...newSkill, name: e.target.value})}
                             />
                             <input 
                                 placeholder="Years" 
                                 type="number"
-                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" 
                                 value={newSkill.years}
                                 onChange={e => setNewSkill({...newSkill, years: e.target.value})}
                             />
@@ -340,15 +335,14 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                             onClick={addSkill}
                             className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
                          >
-                            <Plus size={14} /> Add Skill Record
+                            <Plus size={14} /> Add Skill
                          </button>
                       </div>
                    </div>
 
-                   {/* Education Background */}
                    <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-2">
-                         <GraduationCap size={14} /> Education Background
+                         <GraduationCap size={14} /> Education
                       </label>
                       <div className="space-y-3 mb-4">
                         {formData.education.map((edu, idx) => (
@@ -366,21 +360,21 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                       
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
                          <input 
-                            placeholder="Degree (e.g. B.S. Comp Sci)" 
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                            placeholder="Degree (e.g. BS in Design)" 
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" 
                             value={newEdu.degree}
                             onChange={e => setNewEdu({...newEdu, degree: e.target.value})}
                          />
                          <div className="grid grid-cols-2 gap-2">
                             <input 
-                                placeholder="Institution" 
-                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                placeholder="School Name" 
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" 
                                 value={newEdu.institution}
                                 onChange={e => setNewEdu({...newEdu, institution: e.target.value})}
                             />
                             <input 
                                 placeholder="Year" 
-                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-brand-500" 
+                                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" 
                                 value={newEdu.year}
                                 onChange={e => setNewEdu({...newEdu, year: e.target.value})}
                             />
@@ -390,7 +384,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
                             onClick={addEducation}
                             className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
                          >
-                            <Plus size={14} /> Add Education Node
+                            <Plus size={14} /> Add Education
                          </button>
                       </div>
                    </div>
@@ -412,7 +406,7 @@ const ProfileSetupPage: React.FC<ProfileSetupPageProps> = ({ role, onComplete })
               disabled={!isStepValid()}
               className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/10 hover:bg-slate-800 disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-3"
             >
-              {step === totalSteps ? 'Finish Onboarding' : 'Next Step'} <ArrowRight size={18} />
+              {step === totalSteps ? 'Complete Profile' : 'Next'} <ArrowRight size={18} />
             </button>
           </div>
         </div>

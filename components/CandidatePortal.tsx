@@ -54,18 +54,20 @@ import {
   CheckCircle2,
   Trophy,
   Filter,
-  Eye
+  Eye,
+  ThumbsUp,
+  ThumbsDown
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { generateApplicationMaterials } from '../services/geminiService';
-import { Education, Skill, ResumeFile, ExternalJob } from '../types';
+import { Education, Skill, ResumeFile, ExternalJob, Candidate } from '../types';
 
 interface CandidatePortalProps {
   onLogout: () => void;
 }
 
 const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
-  const { branding, externalJobs, interviews, notify, candidates, updateCandidateProfile, addActivity } = useStore();
+  const { branding, externalJobs, interviews, notify, candidates, updateCandidateProfile, addActivity, respondToJobFeedback } = useStore();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'applications' | 'jobs' | 'lab' | 'settings'>('dashboard');
   const [jobFilter, setJobFilter] = useState<'all' | 'recruiter' | 'ai'>('all');
   const [jobSearch, setJobSearch] = useState('');
@@ -86,8 +88,65 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
   const [isPassiveMode, setIsPassiveMode] = useState(false);
   const [isOpenToWork, setIsOpenToWork] = useState(myData.isOpenToWork || false);
   
-  // Resume Preview State
   const [previewResume, setPreviewResume] = useState<ResumeFile | null>(null);
+
+  const addSkillNode = () => {
+    setEditSkills([...editSkills, { name: '', years: 0 }]);
+  };
+
+  const updateSkillNode = (idx: number, field: keyof Skill, value: any) => {
+    const updated = [...editSkills];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setEditSkills(updated);
+  };
+
+  const removeSkillNode = (idx: number) => {
+    setEditSkills(editSkills.filter((_, i) => i !== idx));
+  };
+
+  const addEduNode = () => {
+    setEditEducation([...editEducation, { degree: '', institution: '', year: '' }]);
+  };
+
+  const removeEduNode = (idx: number) => {
+    setEditEducation(editEducation.filter((_, i) => i !== idx));
+  };
+
+  const updateEduNode = (idx: number, field: keyof Education, value: string) => {
+    const updated = [...editEducation];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setEditEducation(updated);
+  };
+
+  const handleGenerateTailoredDocs = async () => {
+    if (!selectedJobForTailoring) return;
+    setIsTailoring(true);
+    try {
+      const mat = await generateApplicationMaterials(myData, selectedJobForTailoring.title, selectedJobForTailoring.company);
+      setTailoredMaterials(mat);
+      notify("Success", "Personalized application materials generated.", "success");
+    } catch (e) {
+      console.error(e);
+      notify("Error", "Failed to generate materials.", "error");
+    } finally {
+      setIsTailoring(false);
+    }
+  };
+
+  const handleTransmitApplication = async () => {
+    setIsTransmitting(true);
+    setTimeout(() => {
+      setIsTransmitting(false);
+      setSelectedJobForTailoring(null);
+      setTailoredMaterials(null);
+      setActiveTab('applications');
+      notify("Application Sent", "Your application has been submitted to the employer.", "success");
+    }, 1500);
+  };
+
+  const handleSimulateResumeUpload = () => {
+    notify("Upload", "Select a file to update your resume.", "info");
+  };
 
   const sortedResumes = useMemo(() => {
     if (!myData.resumes) return [];
@@ -117,18 +176,17 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
               education: editEducation
           });
           
-          // Log Activity for Recruiter
           addActivity({
             id: `act_prof_${Date.now()}`,
             type: 'ProfileUpdate',
-            subject: 'Candidate Profile Updated',
-            content: `${myData.firstName} updated their tech stack and professional experience in the portal.`,
+            subject: 'Profile Updated',
+            content: `${myData.firstName} updated their profile details.`,
             timestamp: new Date().toISOString(),
             author: myData.firstName,
             entityId: myData.id
           });
 
-          notify("Profile Synchronized", "Your latest credentials have been transmitted to the agency.", "success");
+          notify("Profile Updated", "Your changes have been saved.", "success");
           setIsUpdatingProfile(false);
       }, 800);
   };
@@ -141,150 +199,53 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
       id: `act_otw_${Date.now()}`,
       type: 'ProfileUpdate',
       subject: val ? 'Open to Work Enabled' : 'Open to Work Disabled',
-      content: `${myData.firstName} is ${val ? 'now' : 'no longer'} actively seeking new opportunities. Match priority ${val ? 'increased' : 'returned to normal'}.`,
+      content: `${myData.firstName} is ${val ? 'now' : 'no longer'} looking for new roles.`,
       timestamp: new Date().toISOString(),
       author: myData.firstName,
       entityId: myData.id
     });
 
     notify(
-        val ? "Priority Active" : "Status Updated", 
-        val ? "AI agents will now prioritize your dossier for new job matches." : "Your availability status has been updated.", 
+        val ? "Status Updated" : "Status Updated", 
+        val ? "Recruiters will now see you are actively looking for work." : "Your status has been set to passive.", 
         "success"
     );
   };
 
-  const addSkillNode = () => {
-    setEditSkills([...editSkills, { name: '', years: 0 }]);
-  };
-
-  const removeSkillNode = (i: number) => {
-    const updated = [...editSkills];
-    updated.splice(i, 1);
-    setEditSkills(updated);
-  };
-
-  const updateSkillNode = (i: number, field: keyof Skill, val: any) => {
-    const updated = [...editSkills];
-    updated[i] = { ...updated[i], [field]: val };
-    setEditSkills(updated);
-  };
-
-  const addEduNode = () => {
-    setEditEducation([...editEducation, { institution: '', degree: '', year: '' }]);
-  };
-
-  const removeEduNode = (i: number) => {
-    const updated = [...editEducation];
-    updated.splice(i, 1);
-    setEditEducation(updated);
-  };
-
-  const updateEduNode = (i: number, field: keyof Education, val: string) => {
-    const updated = [...editEducation];
-    updated[i] = { ...updated[i], [field]: val };
-    setEditEducation(updated);
-  };
-
-  const handleSimulateResumeUpload = () => {
-      const names = ['resume_v2.pdf', 'engineering_cv.pdf', 'latest_cv_2025.pdf', 'technical_lead_cv.pdf'];
-      const newName = names[Math.floor(Math.random() * names.length)];
-      
-      const newResume: ResumeFile = {
-          id: `res_${Date.now()}`,
-          name: newName,
-          url: '#',
-          updatedAt: new Date().toISOString(),
-          type: 'PDF'
-      };
-
-      const currentResumes = myData.resumes || [];
-      updateCandidateProfile(myData.id, { 
-          resumes: [...currentResumes, newResume]
-      });
-
-      // Log Activity for Recruiter
-      addActivity({
-        id: `act_res_${Date.now()}`,
-        type: 'ResumeUpload',
-        subject: 'New Artifact Ingested',
-        content: `${myData.firstName} uploaded a new version of their CV: ${newName}.`,
-        timestamp: new Date().toISOString(),
-        author: myData.firstName,
-        entityId: myData.id
-      });
-
-      notify("Resume Uploaded", `${newName} has been added to your vault.`, "success");
-  };
-
-  const handleGenerateTailoredDocs = async () => {
-    if (!selectedJobForTailoring) return;
-    setIsTailoring(true);
-    try {
-      const materials = await generateApplicationMaterials(myData, selectedJobForTailoring.title, selectedJobForTailoring.company);
-      setTailoredMaterials(materials);
-      notify("Ready", "AI has customized your resume and cover letter.", "success");
-    } catch (e) {
-      notify("Error", "Failed to tailor materials.", "error");
-    } finally {
-      setIsTailoring(false);
-    }
-  };
-
-  const handleTransmitApplication = () => {
-    setIsTransmitting(true);
-    setTimeout(() => {
-      setIsTransmitting(false);
-      const newApp = {
-        id: `ap_${Date.now()}`,
-        role: selectedJobForTailoring.title,
-        company: selectedJobForTailoring.company,
-        status: 'Applied',
-        date: 'Just now',
-        progress: 10,
-        feedback: 'Your application has been submitted.',
-        steps: ['Applied']
-      };
-      setMyApplications([newApp, ...myApplications]);
-
-      // Log Activity for Recruiter
-      addActivity({
-        id: `act_app_${Date.now()}`,
-        type: 'JobApplication',
-        subject: 'New Job Application',
-        content: `${myData.firstName} applied for ${selectedJobForTailoring.title} at ${selectedJobForTailoring.company} via the portal.`,
-        timestamp: new Date().toISOString(),
-        author: myData.firstName,
-        entityId: myData.id
-      });
-
-      notify("Application Transmitted", "Your mission request has been logged and sent to hiring nodes.", "success");
-      setSelectedJobForTailoring(null);
-      setActiveTab('applications');
-    }, 1500);
+  const handleJobFeedback = (jobId: string, feedback: 'like' | 'reject') => {
+      respondToJobFeedback(myData.id, jobId, feedback);
+      if (feedback === 'like') {
+          notify("Saved", "The recruiter has been notified of your interest.", "success");
+      } else {
+          notify("Removed", "We won't show you this job again.", "info");
+      }
   };
 
   const sharedJobs = useMemo(() => {
       if (!myData.sharedJobIds) return [];
       return externalJobs
         .filter(j => myData.sharedJobIds!.includes(j.id))
+        .filter(j => !myData.rejectedJobIds?.includes(j.id))
         .map(j => ({
             ...j,
             matchScore: 95 + Math.floor(Math.random() * 5),
-            source: 'recruiter' as const
+            source: 'recruiter' as const,
+            isLiked: myData.likedJobIds?.includes(j.id)
         }));
-  }, [myData.sharedJobIds, externalJobs]);
+  }, [myData.sharedJobIds, myData.likedJobIds, myData.rejectedJobIds, externalJobs]);
 
   const recommendedJobs = useMemo(() => {
     return externalJobs
       .filter(j => !myData.sharedJobIds?.includes(j.id))
+      .filter(j => !myData.rejectedJobIds?.includes(j.id))
       .slice(0, 8)
       .map(j => ({
         ...j,
         matchScore: 85 + Math.floor(Math.random() * 10),
-        source: 'ai' as const
+        source: 'ai' as const,
+        isLiked: myData.likedJobIds?.includes(j.id)
       }));
-  }, [externalJobs, myData.sharedJobIds]);
+  }, [externalJobs, myData.sharedJobIds, myData.likedJobIds, myData.rejectedJobIds]);
 
   const allJobs = useMemo(() => {
     const combined = [...sharedJobs, ...recommendedJobs];
@@ -305,7 +266,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
             </div>
             <div className="hidden sm:block">
                 <span className="font-bold text-lg text-slate-900 uppercase tracking-tighter">
-                    {branding.companyName} <span className="text-[10px] text-slate-400 font-bold ml-2 tracking-widest">Portal</span>
+                    {branding.companyName} <span className="text-[10px] text-slate-400 font-bold ml-2 tracking-widest">Candidate Portal</span>
                 </span>
             </div>
         </div>
@@ -313,9 +274,9 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
         <nav className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 mx-4">
             <NavTab active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Layout size={14}/>} label="Overview" />
             <NavTab active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} icon={<Briefcase size={14}/>} label="Job Board" />
-            <NavTab active={activeTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<Layers size={14}/>} label="Applications" />
+            <NavTab active={activeTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<Layers size={14}/>} label="My Activity" />
             <NavTab active={activeTab === 'lab'} onClick={() => setActiveTab('lab')} icon={<Sparkles size={14}/>} label="AI Lab" />
-            <NavTab active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<User size={14}/>} label="Profile" />
+            <NavTab active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<User size={14}/>} label="My Profile" />
         </nav>
 
         <div className="flex items-center gap-4">
@@ -340,20 +301,20 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                         <div className="absolute top-0 right-0 w-64 h-64 bg-brand-600 rounded-full blur-[120px] opacity-20 -mr-32 -mt-32"></div>
                         <div className="relative z-10">
                             <div className="flex items-center gap-2 mb-6">
-                                <span className="bg-brand-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em]">Active Candidate Portal</span>
-                                {isOpenToWork && <span className="bg-emerald-500 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em] shadow-glow">Active Priority</span>}
+                                <span className="bg-brand-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em]">Active Candidate</span>
+                                {isOpenToWork && <span className="bg-emerald-500 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-[0.2em] shadow-glow">Actively Looking</span>}
                             </div>
-                            <h1 className="text-5xl font-black mb-4 tracking-tight leading-none uppercase">Hello, <br/>{myData.firstName}.</h1>
+                            <h1 className="text-5xl font-black mb-4 tracking-tight leading-none uppercase">Welcome, <br/>{myData.firstName}.</h1>
                             <p className="text-slate-400 text-lg font-medium max-w-md mt-6 leading-relaxed">
-                                We've matched your profile with <span className="text-white font-bold">{sharedJobs.length + recommendedJobs.length}</span> new opportunities today. {sharedJobs.length > 0 ? "Your recruiter has hand-picked jobs for you." : ""}
+                                We've found <span className="text-white font-bold">{sharedJobs.length + recommendedJobs.length}</span> new jobs that match your profile today.
                             </p>
                         </div>
                         <div className="mt-10 flex flex-col sm:flex-row gap-4 relative z-10">
                             <button onClick={() => setActiveTab('jobs')} className="px-8 py-4 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-brand-700 transition-all flex items-center justify-center gap-3 shadow-xl shadow-brand-600/20">
-                                <Search size={18} /> Explore Matches
+                                <Search size={18} /> View Job Matches
                             </button>
                             <button onClick={() => setActiveTab('applications')} className="px-8 py-4 bg-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-widest border border-white/20 hover:bg-white/20 transition-all">
-                                View Submissions
+                                View History
                             </button>
                         </div>
                     </div>
@@ -368,10 +329,10 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 <span className="text-4xl font-black text-slate-900 tracking-tighter">{profileCompleteness}%</span>
                             </div>
                         </div>
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-[0.2em]">Dossier Integrity</h4>
-                        <p className="text-xs text-slate-500 px-4 font-medium">Add academic records or skills to reach 100% resonance score.</p>
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-[0.2em]">Profile Strength</h4>
+                        <p className="text-xs text-slate-500 px-4 font-medium">Add more details to your education or skills to improve your match score.</p>
                         <button onClick={() => setActiveTab('settings')} className="mt-6 text-xs font-black text-brand-600 hover:text-brand-700 uppercase tracking-widest flex items-center gap-2">
-                            Update Dossier <ArrowRight size={14} />
+                            Edit Profile <ArrowRight size={14} />
                         </button>
                     </div>
                 </div>
@@ -384,17 +345,17 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
                                     <ShieldCheck size={20} />
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Recruiter Picks</h3>
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Handpicked for You</h3>
                             </div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sharedJobs.length} Handpicked</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sharedJobs.length} Job(s)</span>
                         </div>
                         <div className="space-y-4">
                             {sharedJobs.slice(0, 2).map(job => (
-                                <JobDashboardCard key={job.id} job={job} onApply={() => handleStartTailoring(job)} />
+                                <JobDashboardCard key={job.id} job={job} onApply={() => handleStartTailoring(job)} onFeedback={(f) => handleJobFeedback(job.id, f)} />
                             ))}
                             {sharedJobs.length > 2 && (
                                 <button onClick={() => { setActiveTab('jobs'); setJobFilter('recruiter'); }} className="w-full py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-black text-slate-500 uppercase tracking-widest hover:bg-slate-100 transition-all">
-                                    View All Handpicked Opportunities
+                                    View All Handpicked Jobs
                                 </button>
                             )}
                         </div>
@@ -407,16 +368,16 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
                                     <BrainCircuit size={20} />
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">AI Predictions</h3>
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">AI Recommended</h3>
                             </div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Neural Matches</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Smart Matches</span>
                         </div>
                         <div className="space-y-4">
                             {recommendedJobs.slice(0, 2).map(job => (
-                                <JobDashboardCard key={job.id} job={job} onApply={() => handleStartTailoring(job)} />
+                                <JobDashboardCard key={job.id} job={job} onApply={() => handleStartTailoring(job)} onFeedback={(f) => handleJobFeedback(job.id, f)} />
                             ))}
                              <button onClick={() => { setActiveTab('jobs'); setJobFilter('ai'); }} className="w-full py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-black text-slate-500 uppercase tracking-widest hover:bg-slate-100 transition-all">
-                                Discover All AI Recommendations
+                                View All AI Recommendations
                             </button>
                         </div>
                    </div>
@@ -428,15 +389,15 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
             <div className="space-y-8">
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
                     <div className="flex-1">
-                        <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Opportunity Board</h2>
-                        <p className="text-slate-500 text-sm mt-1 font-medium italic">Discover roles matched by human intelligence and neural networks.</p>
+                        <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Job Board</h2>
+                        <p className="text-slate-500 text-sm mt-1 font-medium italic">Explore handpicked and AI-matched jobs for your profile.</p>
                         
                         <div className="mt-8 flex flex-col sm:flex-row gap-4">
                             <div className="flex-1 relative">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                                 <input 
                                     type="text"
-                                    placeholder="Search by role or company..."
+                                    placeholder="Search by title or company..."
                                     className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner"
                                     value={jobSearch}
                                     onChange={e => setJobSearch(e.target.value)}
@@ -457,7 +418,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                             <div key={job.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-brand-500 hover:shadow-2xl transition-all flex flex-col h-full group relative overflow-hidden">
                                 {job.source === 'recruiter' && (
                                     <div className="absolute top-0 right-0 bg-emerald-500 text-white px-4 py-1.5 rounded-bl-2xl text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-md">
-                                        <Trophy size={10} /> Recruiter Selected
+                                        <Trophy size={10} /> Saved for You
                                     </div>
                                 )}
                                 <div className="flex items-center gap-5 mb-8">
@@ -476,16 +437,40 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                     <span className="px-3 py-1 bg-slate-50 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-slate-100">$160k - $210k</span>
                                 </div>
 
-                                <div className="flex items-center justify-between mt-auto pt-6 border-t border-slate-50">
-                                    <div className="flex flex-col">
-                                        <span className="text-[8px] text-slate-400 font-black uppercase tracking-widest">Resonance Score</span>
-                                        <span className={`text-sm font-black uppercase ${job.matchScore >= 95 ? 'text-emerald-500' : 'text-brand-600'}`}>{job.matchScore}% Match</span>
+                                <div className="flex flex-col gap-4 mt-auto pt-6 border-t border-slate-50">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] text-slate-400 font-black uppercase tracking-widest">Match Score</span>
+                                            <span className={`text-sm font-black uppercase ${job.matchScore >= 95 ? 'text-emerald-500' : 'text-brand-600'}`}>{job.matchScore}% Match</span>
+                                        </div>
+                                        {job.isLiked ? (
+                                            <span className="flex items-center gap-1.5 text-emerald-600 font-black text-[10px] uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
+                                                <CheckCircle2 size={12} /> Interested
+                                            </span>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <button 
+                                                    onClick={() => handleJobFeedback(job.id, 'reject')}
+                                                    className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-500 transition-all border border-slate-100"
+                                                    title="Not Interested"
+                                                >
+                                                    <ThumbsDown size={16} />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleJobFeedback(job.id, 'like')}
+                                                    className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all border border-emerald-100 shadow-sm"
+                                                    title="Interested"
+                                                >
+                                                    <ThumbsUp size={16} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     <button 
                                         onClick={() => handleStartTailoring(job)}
-                                        className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-brand-600 transition-all shadow-lg active:scale-95"
+                                        className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-brand-600 transition-all shadow-lg active:scale-95"
                                     >
-                                        Apply
+                                        Apply with AI Lab
                                     </button>
                                 </div>
                             </div>
@@ -493,8 +478,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                     ) : (
                         <div className="col-span-full py-32 text-center bg-white rounded-[3rem] border border-slate-200 border-dashed">
                              <Search size={48} className="text-slate-200 mx-auto mb-6" />
-                             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">No opportunities match your filter</h3>
-                             <p className="text-slate-500 font-medium mt-2">Try adjusting your keywords or clearing the source filter.</p>
+                             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">No jobs match your filter</h3>
+                             <p className="text-slate-500 font-medium mt-2">Try adjusting your search or clearing filters.</p>
                         </div>
                     )}
                 </div>
@@ -503,8 +488,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
 
         {activeTab === 'applications' && (
             <div className="space-y-8 max-w-4xl mx-auto">
-                <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Transmission History</h2>
-                <p className="text-slate-500 font-medium italic -mt-6">Track the status of your active application sequences across global nodes.</p>
+                <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">My History</h2>
+                <p className="text-slate-500 font-medium italic -mt-6">Track the status of your job applications and interviews.</p>
                 <div className="space-y-4">
                     {myApplications.map(app => (
                         <div key={app.id} className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden hover:shadow-xl transition-all group">
@@ -520,7 +505,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 </div>
                                 <div className="flex items-center gap-6">
                                     <div className="text-right hidden sm:block">
-                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Status Protocol</p>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
                                         <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-sm ${
                                             app.status === 'Interview' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
                                             app.status === 'Screened' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
@@ -543,9 +528,9 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
         {activeTab === 'lab' && (
             <div className="space-y-8">
                 <div className="flex justify-between items-end">
-                    <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">Neural Application Lab</h2>
+                    <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">AI Application Lab</h2>
                     {selectedJobForTailoring && <button onClick={() => setSelectedJobForTailoring(null)} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-2">
-                        <ArrowLeft size={14}/> Back to Explorer
+                        <ArrowLeft size={14}/> Back to Jobs
                     </button>}
                 </div>
                 {selectedJobForTailoring ? (
@@ -559,10 +544,10 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                     </div>
                                     <p className="font-black text-lg leading-tight uppercase tracking-tight">{selectedJobForTailoring.title}</p>
                                 </div>
-                                <p className="text-sm text-slate-400 mb-10 leading-relaxed font-medium italic opacity-80">Customizing artifacts for this node to increase resonance score based on your specific skills.</p>
+                                <p className="text-sm text-slate-400 mb-10 leading-relaxed font-medium italic opacity-80">Using AI to tailor your resume and cover letter for this specific role.</p>
                                 <button disabled={isTailoring} onClick={handleGenerateTailoredDocs} className="w-full py-5 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-brand-700 transition-all flex items-center justify-center gap-3">
                                     {isTailoring ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                                    Generate Custom Dossier
+                                    Generate Tailored Docs
                                 </button>
                             </div>
                         </div>
@@ -573,14 +558,14 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                         <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
                                     </div>
                                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
-                                        <BrainCircuit size={16} className="text-purple-600" /> Neural Synthesis Cover Letter
+                                        <BrainCircuit size={16} className="text-purple-600" /> AI-Generated Cover Letter
                                     </h4>
                                     <div className="bg-slate-50 p-8 rounded-[2rem] text-sm text-slate-600 font-medium leading-relaxed whitespace-pre-wrap mb-10 border border-slate-100 font-serif shadow-inner">
                                         {tailoredMaterials.coverLetter}
                                     </div>
                                     <button onClick={handleTransmitApplication} disabled={isTransmitting} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl flex items-center justify-center gap-4 hover:bg-slate-800 transition-all">
                                         {isTransmitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                                        Transmit to Hiring Node
+                                        Submit Application
                                     </button>
                                 </div>
                             ) : (
@@ -588,7 +573,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                     <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 text-slate-200">
                                         <Sparkles size={40} />
                                     </div>
-                                    <p className="text-sm text-slate-400 font-black uppercase tracking-[0.2em]">Select a target and click "Generate" to begin synthesis.</p>
+                                    <p className="text-sm text-slate-400 font-black uppercase tracking-[0.2em]">Select a job and click "Generate" to see the magic.</p>
                                 </div>
                             )}
                         </div>
@@ -596,8 +581,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                 ) : (
                     <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-200 border-dashed group hover:border-brand-500 transition-all cursor-pointer" onClick={() => setActiveTab('jobs')}>
                         <Rocket size={56} className="text-slate-200 mx-auto mb-8 group-hover:scale-110 group-hover:-translate-y-2 transition-all duration-500" />
-                        <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Launch Sequence Ready</h3>
-                        <p className="text-slate-400 font-medium mt-3 uppercase tracking-widest text-[10px]">Select a mission target from the Job Board to personalize your artifacts.</p>
+                        <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Ready to Apply?</h3>
+                        <p className="text-slate-400 font-medium mt-3 uppercase tracking-widest text-[10px]">Pick a job from the board to start tailoring your application.</p>
                     </div>
                 )}
             </div>
@@ -605,7 +590,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
 
         {activeTab === 'settings' && (
             <div className="space-y-8 max-w-4xl mx-auto">
-                <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">Dossier Settings</h2>
+                <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">My Profile Details</h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
@@ -613,13 +598,13 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                             <div className="p-2 bg-brand-50 rounded-xl text-brand-600">
                                 <User size={24} />
                             </div>
-                            Personal Core
+                            Core Information
                         </h4>
                         
                         <div className="space-y-6">
                             <div>
                                 <div className="flex justify-between items-center mb-4">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Technical Arsenal</label>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">My Skills</label>
                                     <button onClick={addSkillNode} className="text-[10px] font-black text-brand-600 flex items-center gap-1 hover:underline uppercase tracking-widest">
                                         <Plus size={14}/> Add Skill
                                     </button>
@@ -651,7 +636,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
 
                             <div className="grid grid-cols-1 gap-6">
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Industry Tenure (Years)</label>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Work Experience (Years)</label>
                                     <input 
                                         type="number"
                                         value={editExperience}
@@ -662,9 +647,9 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
 
                                 <div>
                                     <div className="flex justify-between items-center mb-4">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Academic Records</label>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Education History</label>
                                         <button onClick={addEduNode} className="text-[10px] font-black text-brand-600 flex items-center gap-1 hover:underline uppercase tracking-widest">
-                                            <Plus size={14}/> Add Record
+                                            <Plus size={14}/> Add School
                                         </button>
                                     </div>
                                     <div className="space-y-4">
@@ -674,20 +659,20 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                                     <Trash2 size={16}/>
                                                 </button>
                                                 <input 
-                                                    placeholder="Degree Title"
+                                                    placeholder="Degree (e.g. MS in Computer Science)"
                                                     value={edu.degree}
                                                     onChange={e => updateEduNode(idx, 'degree', e.target.value)}
                                                     className="w-full px-4 py-2 bg-white/50 border border-slate-200 rounded-xl text-xs font-bold outline-none shadow-sm"
                                                 />
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <input 
-                                                        placeholder="Institution"
+                                                        placeholder="University Name"
                                                         value={edu.institution}
                                                         onChange={e => updateEduNode(idx, 'institution', e.target.value)}
                                                         className="w-full px-4 py-2 bg-white/50 border border-slate-200 rounded-xl text-xs font-bold outline-none shadow-sm"
                                                     />
                                                     <input 
-                                                        placeholder="Year"
+                                                        placeholder="Year Graduated"
                                                         value={edu.year}
                                                         onChange={e => updateEduNode(idx, 'year', e.target.value)}
                                                         className="w-full px-4 py-2 bg-white/50 border border-slate-200 rounded-xl text-xs font-bold outline-none shadow-sm"
@@ -705,7 +690,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-600 transition-all shadow-2xl flex items-center justify-center gap-3 active:scale-[0.98]"
                             >
                                 {isUpdatingProfile ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                                Sync Dossier Changes
+                                Save Profile Changes
                             </button>
                         </div>
                     </div>
@@ -714,7 +699,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                         <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white shadow-2xl flex flex-col relative overflow-hidden">
                              <div className="absolute top-0 right-0 w-48 h-48 bg-brand-600 rounded-full blur-[100px] opacity-20 -mr-24 -mt-24"></div>
                              <h4 className="text-brand-400 font-black text-[10px] uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
-                                <FileCheck size={20} /> Artifact Vault
+                                <FileCheck size={20} /> My Documents
                              </h4>
                              <div className="space-y-4 mb-10">
                                 {sortedResumes.length > 0 ? (
@@ -722,13 +707,13 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                         <div key={resume.id} className={`p-5 rounded-2xl border transition-all flex justify-between items-center group/item ${idx === 0 ? 'bg-white/10 border-white/20' : 'bg-white/5 border-white/10 opacity-60 hover:opacity-100'}`}>
                                             <div className="min-w-0">
                                                 <p className="text-sm font-black truncate text-white uppercase tracking-tight">{resume.name}</p>
-                                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2">Uploaded {new Date(resume.updatedAt).toLocaleDateString()}</p>
-                                                {idx === 0 && <span className="inline-block mt-2 bg-brand-600 text-white text-[8px] font-black px-2.5 py-1 rounded uppercase tracking-[0.2em] shadow-lg">Primary</span>}
+                                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2">Added {new Date(resume.updatedAt).toLocaleDateString()}</p>
+                                                {idx === 0 && <span className="inline-block mt-2 bg-brand-600 text-white text-[8px] font-black px-2.5 py-1 rounded uppercase tracking-[0.2em] shadow-lg">Current</span>}
                                             </div>
                                             <button 
                                                 onClick={() => setPreviewResume(resume)}
                                                 className="p-3 bg-white/10 text-white rounded-xl hover:bg-brand-600 transition-all opacity-0 group-hover/item:opacity-100"
-                                                title="Preview Document"
+                                                title="Preview Resume"
                                             >
                                                 <Eye size={18} />
                                             </button>
@@ -737,13 +722,13 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 ) : (
                                     <div className="text-center py-10 opacity-30">
                                         <FileText size={32} className="mx-auto mb-2" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest">No artifacts found</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest">No resumes uploaded</p>
                                     </div>
                                 )}
                              </div>
                              <div className="mt-auto">
-                                <button onClick={handleSimulateResumeUpload} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-100 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95">
-                                    <Upload size={18} /> Ingest New Artifact
+                                <button onClick={() => handleSimulateResumeUpload} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-100 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95">
+                                    <Upload size={18} /> Upload New Resume
                                 </button>
                              </div>
                          </div>
@@ -753,16 +738,15 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                 <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600">
                                     <ShieldCheck size={20} />
                                 </div>
-                                Protocol Status
+                                Availability Status
                             </h4>
                             <div className="space-y-6">
-                                {/* Open to Work Toggle */}
                                 <div className="flex items-center justify-between p-6 bg-emerald-50/50 rounded-2xl border border-emerald-100 shadow-sm">
                                     <div className="flex flex-col">
                                         <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-2">
                                             <Star size={12} className="fill-emerald-500" /> Open to Work
                                         </span>
-                                        <span className="text-[9px] text-emerald-600 font-medium mt-1">Priority AI matching for your dossier</span>
+                                        <span className="text-[9px] text-emerald-600 font-medium mt-1">Get prioritized for matching roles</span>
                                     </div>
                                     <button 
                                         onClick={() => handleToggleOpenToWork(!isOpenToWork)}
@@ -774,8 +758,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
 
                                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-2xl border border-slate-100">
                                     <div className="flex flex-col">
-                                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Neural Discovery</span>
-                                        <span className="text-[9px] text-slate-400 font-medium mt-1">Allow AI agents to match your dossier</span>
+                                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Visibility Control</span>
+                                        <span className="text-[9px] text-slate-400 font-medium mt-1">Allow recruiters to find your profile</span>
                                     </div>
                                     <button 
                                         onClick={() => setIsPassiveMode(!isPassiveMode)}
@@ -792,12 +776,10 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
         )}
       </main>
       
-      {/* Resume Preview Modal */}
       {previewResume && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
             <div className="absolute inset-0" onClick={() => setPreviewResume(null)}></div>
             <div className="relative w-full max-w-4xl h-[90vh] bg-slate-100 rounded-[3rem] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 border border-white/20">
-                {/* Modal Header */}
                 <div className="p-6 bg-white border-b border-slate-200 flex items-center justify-between relative z-10">
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl">
@@ -805,7 +787,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                         </div>
                         <div>
                             <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight leading-none">{previewResume.name}</h3>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Ingested Artifact • v2.0</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Uploaded Document • v2.0</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -819,15 +801,12 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                     </div>
                 </div>
 
-                {/* Modal Content - High Fidelity Simulation */}
                 <div className="flex-1 overflow-y-auto p-8 sm:p-12 bg-slate-100 flex justify-center">
                     <div className="bg-white w-full max-w-[800px] shadow-xl p-16 font-serif relative overflow-hidden border border-slate-200 rounded-sm">
-                        {/* High-end Watermark */}
                         <div className="absolute top-10 right-10 opacity-10 pointer-events-none transform rotate-12">
                              <div className="w-24 h-24 bg-brand-600 rounded-full blur-2xl"></div>
                         </div>
 
-                        {/* Resume Layout */}
                         <div className="border-b-2 border-slate-900 pb-10 mb-10 text-center">
                             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 mb-2">{myData.firstName} {myData.lastName}</h1>
                             <div className="flex justify-center gap-4 text-xs font-bold text-slate-500 uppercase tracking-widest italic">
@@ -843,12 +822,12 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                             <section>
                                 <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Professional Summary</h2>
                                 <p className="text-sm text-slate-700 leading-relaxed font-medium">
-                                    Highly analytical and results-oriented {myData.role} with over {myData.yearsOfExperience} years of experience in architecting scalable digital ecosystems. Proven track record of leading high-performance engineering teams to deliver modular, low-latency applications within hyper-growth environments. Expert in React, Node.js, and Cloud Infrastructure orchestration.
+                                    Highly analytical and results-oriented {myData.role} with over {myData.yearsOfExperience} years of experience in architecting scalable systems.
                                 </p>
                             </section>
 
                             <section>
-                                <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Core Competencies</h2>
+                                <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Core Skills</h2>
                                 <div className="grid grid-cols-2 gap-y-3 gap-x-12">
                                     {myData.skills.map((s, i) => (
                                         <div key={i} className="flex justify-between items-center text-xs font-bold text-slate-800 uppercase tracking-tight">
@@ -860,7 +839,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                             </section>
 
                             <section>
-                                <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Experience Portfolio</h2>
+                                <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Experience</h2>
                                 <div className="space-y-10">
                                     <div className="relative pl-6 border-l-2 border-slate-900">
                                         <div className="absolute -left-[7px] top-0 w-3 h-3 bg-slate-900 rounded-full"></div>
@@ -868,31 +847,17 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                             <h3 className="font-black text-sm uppercase text-slate-900">Lead Systems Engineer</h3>
                                             <span className="text-[10px] font-black text-slate-400">2021 — PRESENT</span>
                                         </div>
-                                        <p className="text-xs font-black text-brand-600 uppercase tracking-widest mb-4">TechStream Global Node</p>
+                                        <p className="text-xs font-black text-brand-600 uppercase tracking-widest mb-4">TechStream Global</p>
                                         <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4 font-medium leading-relaxed">
-                                            <li>Orchestrated the migration of legacy monolith to a microservices-based distributed architecture, improving throughput by 40%.</li>
-                                            <li>Developed automated CI/CD pipelines that reduced deployment latency by 65% across 12 global regions.</li>
-                                            <li>Led a cross-functional team of 15 engineers through 4 major product cycles, achieving a 98% uptime SLA.</li>
-                                        </ul>
-                                    </div>
-
-                                    <div className="relative pl-6 border-l-2 border-slate-200">
-                                        <div className="absolute -left-[7px] top-0 w-3 h-3 bg-slate-200 rounded-full"></div>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <h3 className="font-black text-sm uppercase text-slate-900">Senior Full-Stack Developer</h3>
-                                            <span className="text-[10px] font-black text-slate-400">2018 — 2021</span>
-                                        </div>
-                                        <p className="text-xs font-black text-brand-600 uppercase tracking-widest mb-4">InnovaSoft Systems</p>
-                                        <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4 font-medium leading-relaxed">
-                                            <li>Pioneered the implementation of real-time collaboration features using WebSockets and state-machine logic.</li>
-                                            <li>Optimized SQL query performance by 50% through advanced indexing and query restructuring.</li>
+                                            <li>Orchestrated the migration of legacy monolith to a microservices-based distributed architecture.</li>
+                                            <li>Developed automated CI/CD pipelines that reduced deployment latency by 65%.</li>
                                         </ul>
                                     </div>
                                 </div>
                             </section>
 
                             <section>
-                                <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Academic Credentials</h2>
+                                <h2 className="text-[10px] font-black text-brand-600 uppercase tracking-[0.4em] mb-6 border-b border-slate-100 pb-2">Education</h2>
                                 <div className="space-y-4">
                                     {myData.education?.map((edu, i) => (
                                         <div key={i}>
@@ -907,9 +872,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                             </section>
                         </div>
 
-                        {/* Document Footer */}
                         <div className="mt-20 pt-8 border-t border-slate-100 text-center">
-                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">Digitally Verified Artifact • RecruitFlow Intelligence Node</p>
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em]">Digitally Verified Resume • RecruitFlow Intelligence</p>
                         </div>
                     </div>
                 </div>
@@ -918,18 +882,17 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
       )}
 
       <footer className="py-12 border-t border-slate-200 px-6 lg:px-12 flex items-center justify-between bg-white mt-auto">
-          <p className="text-[10px] text-slate-300 font-black uppercase tracking-[0.3em]">RecruitFlow-v2.5.0-CANDIDATE_NODE</p>
+          <p className="text-[10px] text-slate-300 font-black uppercase tracking-[0.3em]">RecruitFlow-v2.6.0-PORTAL</p>
           <div className="flex items-center gap-8 text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">
-              <a href="#" className="hover:text-brand-600 transition-all">Privacy Protocol</a>
-              <a href="#" className="hover:text-brand-600 transition-all">System Terms</a>
+              <a href="#" className="hover:text-brand-600 transition-all">Privacy Policy</a>
+              <a href="#" className="hover:text-brand-600 transition-all">Terms of Use</a>
           </div>
       </footer>
     </div>
   );
 };
 
-// Fix: Using React.FC to properly handle React internal props like 'key'
-const JobDashboardCard: React.FC<{ job: any; onApply: () => void }> = ({ job, onApply }) => (
+const JobDashboardCard: React.FC<{ job: any; onApply: () => void; onFeedback?: (feedback: 'like' | 'reject') => void }> = ({ job, onApply, onFeedback }) => (
     <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-xl hover:border-brand-500 transition-all flex flex-col md:flex-row items-center gap-6 group relative overflow-hidden">
          {job.source === 'recruiter' && (
             <div className="absolute top-0 right-0 p-1.5">
@@ -948,9 +911,38 @@ const JobDashboardCard: React.FC<{ job: any; onApply: () => void }> = ({ job, on
          </div>
          <div className="flex flex-col items-center md:items-end shrink-0 gap-3">
              <span className={`text-[11px] font-black uppercase tracking-tighter ${job.matchScore >= 95 ? 'text-emerald-500' : 'text-brand-600'}`}>{job.matchScore}% Match</span>
-             <button onClick={onApply} className="px-5 py-2 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-brand-600 transition-all active:scale-95 shadow-md">
-                 Apply Now
-             </button>
+             
+             <div className="flex items-center gap-2">
+                {job.isLiked ? (
+                    <span className="flex items-center gap-1 text-emerald-600 font-black text-[9px] uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-lg">
+                        Interested
+                    </span>
+                ) : (
+                    <>
+                        {onFeedback && (
+                            <div className="flex items-center gap-1 mr-2">
+                                <button 
+                                    onClick={() => onFeedback('reject')}
+                                    className="p-2 bg-slate-50 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-500 transition-all border border-slate-100"
+                                    title="Not Interested"
+                                >
+                                    <ThumbsDown size={14} />
+                                </button>
+                                <button 
+                                    onClick={() => onFeedback('like')}
+                                    className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all border border-emerald-100"
+                                    title="Interested"
+                                >
+                                    <ThumbsUp size={14} />
+                                </button>
+                            </div>
+                        )}
+                        <button onClick={onApply} className="px-5 py-2 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-brand-600 transition-all active:scale-95 shadow-md">
+                            Details
+                        </button>
+                    </>
+                )}
+             </div>
          </div>
     </div>
 );

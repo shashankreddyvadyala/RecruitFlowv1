@@ -85,6 +85,8 @@ export interface Candidate {
   salaryExpectation?: string;
 
   sharedJobIds?: string[]; 
+  likedJobIds?: string[];
+  rejectedJobIds?: string[];
   resumes?: ResumeFile[];
 }
 
@@ -102,7 +104,7 @@ export interface Job {
 
 export interface Activity {
   id: string;
-  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload' | 'JobShared' | 'Optimization' | 'JobApplication';
+  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'ProfileUpdate' | 'ResumeUpload' | 'JobShared' | 'Optimization' | 'JobApplication' | 'CandidateFeedback';
   subject: string;
   content: string;
   timestamp: string;

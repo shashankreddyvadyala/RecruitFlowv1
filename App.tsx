@@ -30,7 +30,6 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
   const [isProfileComplete, setIsProfileComplete] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Background Alert Checker
   useEffect(() => {
     const checkAlerts = () => {
       const now = new Date();
@@ -44,7 +43,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
         if (diffMins > 0 && diffMins <= 15) {
           notify(
             "Upcoming Interview", 
-            `Your session with ${int.candidateName} starts in ${diffMins} minutes.`, 
+            `Your interview with ${int.candidateName} starts in ${diffMins} minutes.`, 
             "warning"
           );
         }
@@ -55,7 +54,6 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
     return () => clearInterval(interval);
   }, [interviews, notify]);
 
-  // Handle outside clicks for notification dropdown
   useEffect(() => {
     const handler = (e: MouseEvent) => {
         if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -102,12 +100,12 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
              <div className="p-6 bg-purple-50 rounded-full animate-bounce">
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
              </div>
-             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Autonomous Agents</h2>
+             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">AI Settings</h2>
              <p className="text-slate-500 max-w-md font-medium">
-               Configure your AI Recruiter voice, personality, and schedule constraints for automated phone screening.
+               Configure your AI voice and behavior for automated screening calls.
              </p>
              <button className="px-8 py-3 bg-purple-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-purple-700 shadow-xl shadow-purple-200 transition-all">
-               Configure Voice Agent
+               Configure AI
              </button>
           </div>
         );
@@ -144,7 +142,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
                >
                  <UserCircle2 size={18} className="text-slate-600" />
                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
-                    {userRole === UserRole.Owner ? 'Owner' : userRole === UserRole.Recruiter ? 'Recruiter' : 'Candidate'} View
+                    {userRole === UserRole.Owner ? 'Admin' : userRole === UserRole.Recruiter ? 'Recruiter' : 'Candidate'} View
                  </span>
                  <ChevronDown size={14} className={`text-slate-400 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
                </button>
@@ -154,20 +152,20 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
                     onClick={() => { setUserRole(UserRole.Owner); setIsMenuOpen(false); }}
                     className={`w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.Owner ? 'bg-brand-50 text-brand-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
                    >
-                     Switch to Owner
+                     Admin Dashboard
                    </button>
                    <button 
                     onClick={() => { setUserRole(UserRole.Recruiter); setIsMenuOpen(false); }}
                     className={`w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${userRole === UserRole.Recruiter ? 'bg-brand-50 text-brand-600' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`}
                    >
-                     Switch to Recruiter
+                     Recruiter View
                    </button>
                    <div className="h-[1px] bg-slate-100 my-1"></div>
                    <button 
                     onClick={onLogout}
                     className="w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-50 hover:text-red-600 transition-all"
                    >
-                     Logout System
+                     Logout
                    </button>
                  </div>
                )}
@@ -175,7 +173,6 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
 
              <div className="h-6 w-[1px] bg-slate-200 mx-2"></div>
 
-             {/* Dynamic Notification System */}
              <div className="relative" ref={notifRef}>
                 <button 
                     onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -190,7 +187,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
                 {isNotifOpen && (
                     <div className="absolute top-full right-0 mt-3 w-80 bg-white rounded-[2rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.25)] border border-slate-100 overflow-hidden z-[100] animate-in fade-in zoom-in-95 duration-200">
                         <div className="p-5 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-                            <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Agency Intel</h4>
+                            <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Activity</h4>
                             <span className="bg-brand-600 text-white text-[8px] font-black px-2 py-0.5 rounded-full">{recentCandidateActivities.length} NEW</span>
                         </div>
                         <div className="max-h-[400px] overflow-y-auto">
@@ -224,7 +221,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
                             ) : (
                                 <div className="p-12 text-center">
                                     <BellRing size={32} className="mx-auto mb-3 text-slate-100" />
-                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No recent alerts</p>
+                                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">All caught up</p>
                                 </div>
                             )}
                         </div>
@@ -232,7 +229,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
                             onClick={() => { setCurrentView('activity-log'); setIsNotifOpen(false); }}
                             className="w-full py-4 text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] bg-white hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                         >
-                            Open Command Center <ArrowRight size={12} />
+                            View Full Log <ArrowRight size={12} />
                         </button>
                     </div>
                 )}
@@ -253,7 +250,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
     </div>
   );
 }
-
+// Rest of the file unchanged...
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authView, setAuthView] = useState<'landing' | 'login' | 'signup'>('landing');

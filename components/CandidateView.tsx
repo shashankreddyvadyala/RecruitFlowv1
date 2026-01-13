@@ -43,10 +43,13 @@ import {
   Award,
   FileCheck,
   ChevronRight,
-  Eye
+  Eye,
+  Check,
+  Users
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import ActivityTimeline from './ActivityTimeline';
+import BulkShareModal from './BulkShareModal';
 
 const CandidateView: React.FC = () => {
   const { 
@@ -60,6 +63,7 @@ const CandidateView: React.FC = () => {
     addInterview, 
     updateCandidateNotes, 
     shareJobWithCandidate,
+    bulkShareJobs,
     notify, 
     addActivity 
   } = useStore();
@@ -70,6 +74,14 @@ const CandidateView: React.FC = () => {
   
   const [candidateNotes, setCandidateNotes] = useState('');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  // Bulk Selection States (Main Table)
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+  const [showBulkShare, setShowBulkShare] = useState(false);
+
+  // Match Selection States (Sub-tab)
+  const [selectedMatchJobIds, setSelectedMatchJobIds] = useState<string[]>([]);
+  const [isSharingMatches, setIsSharingMatches] = useState(false);
 
   // Scheduling States
   const [isSchedulingAI, setIsSchedulingAI] = useState(false);
@@ -92,7 +104,6 @@ const CandidateView: React.FC = () => {
 
   const activeCandidate = candidates.find(c => c.id === selectedCandidateId) || null;
   
-  // Resume Stacking & Selection Logic
   const sortedResumes = useMemo(() => {
     if (!activeCandidate?.resumes) return [];
     return [...activeCandidate.resumes].sort((a, b) => 
@@ -112,7 +123,6 @@ const CandidateView: React.FC = () => {
 
   const activeResume = sortedResumes.find(r => r.id === selectedResumeId);
 
-  // Filter interviews for this specific candidate
   const candidateInterviews = useMemo(() => {
     if (!activeCandidate) return [];
     return interviews
@@ -123,12 +133,10 @@ const CandidateView: React.FC = () => {
   const upcomingInterviews = candidateInterviews.filter(i => i.status === 'Scheduled' && new Date(i.startTime) > new Date());
   const pastInterviews = candidateInterviews.filter(i => i.status !== 'Scheduled' || new Date(i.startTime) <= new Date());
 
-  // Simple AI Matching Logic for the matches tab
   const recommendedJobs = useMemo(() => {
     if (!activeCandidate) return [];
     
     return externalJobs.map(job => {
-      // Basic matching simulation
       const skillMatch = activeCandidate.skills.some(skill => 
         job.title.toLowerCase().includes(skill.name.toLowerCase())
       );
@@ -142,10 +150,46 @@ const CandidateView: React.FC = () => {
       setCandidateNotes(activeCandidate.notes || '');
       setSuggestedSlots([]);
       setShowManualForm(false);
-      // Default to info tab when switching candidates
-      // setActiveSubTab('info'); // Keep current tab for better UX if desired
+      setSelectedMatchJobIds([]); // Reset match selection when switching candidate
     }
   }, [selectedCandidateId, activeCandidate?.notes]);
+
+  const toggleBulkSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBulkSelectedIds(prev => 
+        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (bulkSelectedIds.length === candidates.length) {
+        setBulkSelectedIds([]);
+    } else {
+        setBulkSelectedIds(candidates.map(c => c.id));
+    }
+  };
+
+  const toggleMatchSelect = (jobId: string) => {
+    setSelectedMatchJobIds(prev => 
+        prev.includes(jobId) ? prev.filter(id => id !== jobId) : [...prev, jobId]
+    );
+  };
+
+  const handleBulkShareMatches = async () => {
+    if (!activeCandidate || selectedMatchJobIds.length === 0) return;
+    
+    setIsSharingMatches(true);
+    const selectedJobs = recommendedJobs.filter(j => selectedMatchJobIds.includes(j.id));
+    
+    try {
+        await bulkShareJobs([activeCandidate.id], selectedJobs);
+        setSelectedMatchJobIds([]);
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsSharingMatches(false);
+    }
+  };
 
   const handleSaveNotes = () => {
     if (!activeCandidate) return;
@@ -162,18 +206,17 @@ const CandidateView: React.FC = () => {
     
     shareJobWithCandidate(activeCandidate.id, job);
     
-    // Add activity record
     addActivity({
       id: `act_share_${Date.now()}`,
       type: 'JobShared',
-      subject: 'Job Opportunity Shared',
-      content: `Shared "${job.title}" at ${job.company} with candidate via email and portal.`,
+      subject: 'Handpicked Mission Shared',
+      content: `Shared "${job.title}" at ${job.company} with candidate portal.`,
       timestamp: new Date().toISOString(),
       author: 'Alex Morgan',
       entityId: activeCandidate.id
     });
 
-    notify("Job Shared", `Shared ${job.title} with ${activeCandidate.firstName}.`, "success");
+    notify("Mission Shared", `Shared ${job.title} with ${activeCandidate.firstName}.`, "success");
   };
 
   const handleSmartSchedule = async () => {
@@ -309,11 +352,11 @@ const CandidateView: React.FC = () => {
   const candidateActivities = activeCandidate ? activities.filter(a => a.entityId === activeCandidate.id) : [];
 
   return (
-    <div className="h-full flex flex-col font-sans">
+    <div className="h-full flex flex-col font-sans relative">
       <div className="flex justify-between items-center mb-8">
         <div>
-           <h2 className="text-3xl font-bold text-slate-900">Candidate Pool</h2>
-           <p className="text-xs text-slate-400 font-medium uppercase mt-1">Manage and track your candidates</p>
+           <h2 className="text-3xl font-bold text-slate-900 uppercase tracking-tight">Candidate Pool</h2>
+           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Direct Talent Access</p>
         </div>
         <div className="flex gap-4">
           <div className="relative">
@@ -333,60 +376,80 @@ const CandidateView: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
+      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-8 py-4 font-bold text-[10px] uppercase text-slate-400">Name</th>
-                <th className="px-8 py-4 font-bold text-[10px] uppercase text-slate-400">Role</th>
-                <th className="px-8 py-4 font-bold text-[10px] uppercase text-slate-400">Status</th>
-                <th className="px-8 py-4 font-bold text-[10px] uppercase text-slate-400 text-right">Match Score</th>
-                <th className="px-8 py-4 font-bold text-[10px] uppercase text-slate-400 text-right">Actions</th>
+                <th className="px-8 py-4 w-10">
+                    <button 
+                        onClick={toggleAll}
+                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                            bulkSelectedIds.length === candidates.length && candidates.length > 0
+                            ? 'bg-brand-600 border-brand-600 text-white shadow-lg'
+                            : 'border-slate-300 bg-white'
+                        }`}
+                    >
+                        {bulkSelectedIds.length === candidates.length && candidates.length > 0 && <Check size={14} />}
+                    </button>
+                </th>
+                <th className="px-4 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Dossier</th>
+                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Current Role</th>
+                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Status</th>
+                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 text-right tracking-widest">Resonance</th>
+                <th className="px-8 py-4 font-black text-[10px] uppercase text-slate-400 text-right tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {candidates.map((c) => {
                 const isTopMatch = c.matchScore >= 90;
+                const isSelected = bulkSelectedIds.includes(c.id);
                 return (
-                  <tr key={c.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setSelectedCandidateId(c.id)}>
+                  <tr key={c.id} className={`hover:bg-slate-50/50 transition-colors group cursor-pointer ${isSelected ? 'bg-brand-50/40' : ''}`} onClick={() => setSelectedCandidateId(c.id)}>
                     <td className="px-8 py-5">
+                         <button 
+                            onClick={(e) => toggleBulkSelect(c.id, e)}
+                            className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                isSelected ? 'bg-brand-600 border-brand-600 text-white shadow-lg' : 'border-slate-300 bg-white group-hover:border-brand-400'
+                            }`}
+                        >
+                            {isSelected && <Check size={14} />}
+                        </button>
+                    </td>
+                    <td className="px-4 py-5">
                       <div className="flex items-center gap-4">
-                        <img src={c.avatarUrl} alt="" className="w-10 h-10 rounded-full border object-cover" />
+                        <img src={c.avatarUrl} alt="" className="w-11 h-11 rounded-2xl border border-white shadow-sm object-cover" />
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                             <p className="font-bold text-slate-900 text-sm leading-none">{c.firstName} {c.lastName}</p>
-                             {c.isOpenToWork && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.5)]" title="Open to Work Priority" />}
+                             <p className="font-black text-slate-900 text-sm leading-none uppercase tracking-tight">{c.firstName} {c.lastName}</p>
+                             {c.isOpenToWork && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-glow" title="Open to Work Priority" />}
                           </div>
-                          <p className="text-[10px] text-slate-400 font-medium">{c.email}</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{c.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-8 py-5">
-                      <span className="text-sm font-medium text-slate-700">{c.role}</span>
+                      <span className="text-xs font-black text-slate-700 uppercase tracking-tight">{c.role}</span>
                     </td>
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                             isTopMatch ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'
                         }`}>
                             {isTopMatch ? 'Top Priority' : 'Active'}
                         </span>
-                        {c.isOpenToWork && (
-                            <span className="px-2 py-1 bg-emerald-500 text-white rounded-full text-[7px] font-black uppercase tracking-widest shadow-glow">Open To Work</span>
-                        )}
                       </div>
                     </td>
                     <td className="px-8 py-5 text-right">
-                      <span className={`text-sm font-bold ${c.matchScore > 85 ? 'text-emerald-600' : 'text-brand-600'}`}>
+                      <span className={`text-sm font-black ${c.matchScore > 85 ? 'text-emerald-600' : 'text-brand-600'}`}>
                         {c.matchScore}%
                       </span>
                     </td>
                     <td className="px-8 py-5 text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => handleEmail(c, e)} className="p-2 text-slate-400 hover:text-brand-600" title="Draft Outreach"><Mail size={16} /></button>
-                        <button onClick={(e) => handleAnalyze(c, e)} className="p-2 text-slate-400 hover:text-purple-600" title="AI Resonance Check"><Zap size={16} /></button>
-                        <button onClick={(e) => handleDeleteCandidate(c.id, `${c.firstName}`, e)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => handleEmail(c, e)} className="p-2 text-slate-400 hover:text-brand-600 transition-colors" title="Draft Outreach"><Mail size={16} /></button>
+                        <button onClick={(e) => handleAnalyze(c, e)} className="p-2 text-slate-400 hover:text-purple-600 transition-colors" title="AI Resonance Check"><Zap size={16} /></button>
+                        <button onClick={(e) => handleDeleteCandidate(c.id, `${c.firstName}`, e)} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
@@ -396,6 +459,43 @@ const CandidateView: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Simplified Selection Dock */}
+      {bulkSelectedIds.length > 0 && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[150] animate-in slide-in-from-bottom-8 duration-300">
+              <div className="bg-white/95 backdrop-blur-md px-6 py-3 rounded-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.15)] border border-slate-200 flex items-center gap-6">
+                  <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
+                    <span className="flex items-center justify-center w-6 h-6 bg-brand-600 text-white text-[10px] font-black rounded-lg">{bulkSelectedIds.length}</span>
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-tight">Selected</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                      <button 
+                        onClick={() => setBulkSelectedIds([])}
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                        onClick={() => setShowBulkShare(true)}
+                        className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-600 transition-all shadow-lg active:scale-95 flex items-center gap-2"
+                      >
+                          <Send size={14} /> Transmit Jobs
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {showBulkShare && (
+          <BulkShareModal 
+            selectedCandidates={candidates.filter(c => bulkSelectedIds.includes(c.id))}
+            onClose={() => {
+                setShowBulkShare(false);
+                setBulkSelectedIds([]);
+            }}
+          />
+      )}
 
       {activeCandidate && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-[100] flex items-center justify-end">
@@ -447,7 +547,6 @@ const CandidateView: React.FC = () => {
                     </div>
                     
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1">
-                        {/* Resume Stack Selection */}
                         <div className="lg:col-span-4 space-y-3">
                             {sortedResumes.length > 0 ? (
                                 sortedResumes.map((resume, idx) => (
@@ -488,7 +587,6 @@ const CandidateView: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Resume Preview Window */}
                         <div className="lg:col-span-8 bg-slate-100 rounded-[2.5rem] border border-slate-200 shadow-inner flex flex-col relative overflow-hidden min-h-[400px]">
                             {activeResume ? (
                                 <>
@@ -504,8 +602,6 @@ const CandidateView: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex-1 p-8 overflow-y-auto">
-                                        {/* Real App: <iframe src={activeResume.url} /> */}
-                                        {/* Simulation UI */}
                                         <div className="bg-white rounded-xl shadow-lg p-10 space-y-6 mx-auto max-w-lg min-h-full border border-slate-200 font-serif">
                                             <div className="text-center pb-6 border-b border-slate-100">
                                                 <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-1">{activeCandidate.firstName} {activeCandidate.lastName}</h1>
@@ -558,64 +654,123 @@ const CandidateView: React.FC = () => {
                     </div>
                 </div>
               ) : activeSubTab === 'matches' ? (
-                <div className="space-y-6">
+                <div className="space-y-6 relative pb-20">
                     <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Recommended by AI</h4>
-                        <span className="text-[10px] font-bold text-slate-300">BASED ON PROFILE SKILLS</span>
+                        <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Recommended by AI</h4>
+                            {selectedMatchJobIds.length > 0 && (
+                                <span className="bg-brand-600 text-white text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest">
+                                    {selectedMatchJobIds.length} Selected
+                                </span>
+                            )}
+                        </div>
+                        <button 
+                            onClick={() => {
+                                if (selectedMatchJobIds.length === recommendedJobs.length) {
+                                    setSelectedMatchJobIds([]);
+                                } else {
+                                    setSelectedMatchJobIds(recommendedJobs.map(j => j.id));
+                                }
+                            }}
+                            className="text-[10px] font-black text-brand-600 uppercase tracking-widest hover:underline"
+                        >
+                            {selectedMatchJobIds.length === recommendedJobs.length ? 'Deselect All' : 'Select All'}
+                        </button>
                     </div>
                     
                     {recommendedJobs.length > 0 ? (
-                        recommendedJobs.map((job) => {
-                            const isAlreadyShared = activeCandidate.sharedJobIds?.includes(job.id);
-                            return (
-                                <div key={job.id} className="bg-white border border-slate-200 rounded-2xl p-6 hover:border-brand-500 transition-all group">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex gap-3">
-                                            <div className="w-10 h-10 bg-slate-900 text-white rounded-lg flex items-center justify-center font-bold text-sm">
-                                                {job.company[0]}
+                        <div className="space-y-3">
+                            {recommendedJobs.map((job) => {
+                                const isAlreadyShared = activeCandidate.sharedJobIds?.includes(job.id);
+                                const isSelected = selectedMatchJobIds.includes(job.id);
+                                return (
+                                    <div 
+                                        key={job.id} 
+                                        onClick={() => !isAlreadyShared && toggleMatchSelect(job.id)}
+                                        className={`bg-white border rounded-2xl p-5 transition-all group cursor-pointer relative overflow-hidden ${
+                                            isSelected 
+                                            ? 'border-brand-500 bg-brand-50/20 shadow-md ring-2 ring-brand-500/5' 
+                                            : isAlreadyShared 
+                                                ? 'border-slate-100 opacity-60 grayscale-[0.5]' 
+                                                : 'border-slate-200 hover:border-brand-300'
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="flex gap-4">
+                                                <div className="relative">
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-sm transition-colors ${
+                                                        isSelected ? 'bg-brand-600 text-white' : 'bg-slate-900 text-white'
+                                                    }`}>
+                                                        {job.company[0]}
+                                                    </div>
+                                                    {!isAlreadyShared && (
+                                                        <div className={`absolute -top-2 -left-2 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                                            isSelected ? 'bg-brand-600 border-brand-600 text-white shadow-sm' : 'bg-white border-slate-200 group-hover:border-brand-400'
+                                                        }`}>
+                                                            {isSelected && <Check size={12} />}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <h5 className="font-black text-slate-900 text-sm uppercase tracking-tight">{job.title}</h5>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{job.company} • {job.location}</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <h5 className="font-bold text-slate-900 text-sm">{job.title}</h5>
-                                                <p className="text-[10px] text-slate-400 font-medium">{job.company} • {job.location}</p>
+                                            <div className="text-right">
+                                                <span className={`font-black text-xs ${job.matchScore >= 90 ? 'text-emerald-500' : 'text-brand-600'}`}>{job.matchScore}% Match</span>
+                                                {isAlreadyShared && <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mt-1 flex items-center justify-end gap-1"><CheckCircle2 size={10} /> Shared</p>}
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <span className="text-emerald-500 font-bold text-xs">{(job as any).matchScore}% Match</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-3 mt-4">
-                                        <button 
-                                            disabled={isAlreadyShared}
-                                            onClick={() => handleShareJob(job)}
-                                            className={`flex-1 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
-                                                isAlreadyShared 
-                                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100 cursor-default' 
-                                                : 'bg-brand-600 text-white hover:bg-brand-700 shadow-md shadow-brand-600/10'
-                                            }`}
-                                        >
-                                            {isAlreadyShared ? (
-                                                <><CheckCircle2 size={14} /> Shared with Candidate</>
-                                            ) : (
-                                                <><Share2 size={14} /> Share & Notify</>
+                                        
+                                        <div className="flex items-center gap-3 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {!isAlreadyShared && !isSelected && (
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleShareJob(job); }}
+                                                    className="flex-1 py-2 bg-brand-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-700 shadow-md flex items-center justify-center gap-2"
+                                                >
+                                                    <Share2 size={14} /> Share with Candidate
+                                                </button>
                                             )}
-                                        </button>
-                                        <a 
-                                            href={job.url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="p-2.5 border border-slate-200 text-slate-400 rounded-xl hover:bg-slate-50 transition-colors"
-                                        >
-                                            <ExternalLink size={14} />
-                                        </a>
+                                            <a 
+                                                href={job.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="p-2 border border-slate-200 text-slate-400 rounded-xl hover:bg-slate-50 transition-colors"
+                                            >
+                                                <ExternalLink size={14} />
+                                            </a>
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })
+                                );
+                            })}
+                        </div>
                     ) : (
                         <div className="text-center py-12">
                             <Bot size={40} className="text-slate-200 mx-auto mb-4" />
                             <p className="text-xs text-slate-400 font-bold uppercase">No external jobs found</p>
+                        </div>
+                    )}
+
+                    {/* Internal Selection Dock for the sub-tab */}
+                    {selectedMatchJobIds.length > 0 && (
+                        <div className="absolute bottom-4 left-0 right-0 px-2 animate-in slide-in-from-bottom-4 duration-300">
+                            <div className="bg-slate-900 text-white p-4 rounded-[1.5rem] flex items-center justify-between shadow-2xl border border-white/10">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center font-black text-xs">
+                                        {selectedMatchJobIds.length}
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Missions Selected</span>
+                                </div>
+                                <button 
+                                    disabled={isSharingMatches}
+                                    onClick={handleBulkShareMatches}
+                                    className="px-6 py-2.5 bg-white text-slate-900 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-50 transition-all flex items-center gap-2"
+                                >
+                                    {isSharingMatches ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                    Share with {activeCandidate.firstName}
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -653,7 +808,7 @@ const CandidateView: React.FC = () => {
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Time</label>
-                                            <input type="time" required className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-medium text-white focus:ring-2 focus:ring-brand-500 outline-none" value={interviewTime} onChange={(e) => setInterviewTime(e.target.value)} />
+                                            <input type="time" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium" value={interviewTime} onChange={(e) => setInterviewTime(e.target.value)} />
                                         </div>
                                     </div>
                                     <button type="submit" className="w-full py-3 bg-white text-slate-900 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-colors">
@@ -750,7 +905,6 @@ const CandidateView: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-8">
-                  {/* Notes Section */}
                   <div className="bg-white border border-slate-200 p-6 rounded-2xl">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold text-slate-900">Notes</h3>
@@ -761,7 +915,6 @@ const CandidateView: React.FC = () => {
                    <textarea value={candidateNotes} onChange={(e) => setCandidateNotes(e.target.value)} className="w-full min-h-[120px] p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium resize-none outline-none focus:ring-1 focus:ring-brand-500" placeholder="Add candidate notes here..." />
                   </div>
                   
-                  {/* Experience & Education Display */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -782,7 +935,7 @@ const CandidateView: React.FC = () => {
                                 {activeCandidate.education.map((edu, i) => (
                                     <div key={i} className="border-l-2 border-brand-200 pl-3">
                                         <p className="text-xs font-black text-slate-900 uppercase tracking-tight">{edu.degree}</p>
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">{edu.institution} • {edu.year}</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{edu.institution} • {edu.year}</p>
                                     </div>
                                 ))}
                             </div>

@@ -28,6 +28,8 @@ interface StoreContextType {
   addActivity: (activity: Activity) => void;
   sourceCandidatesForJob: (externalJobId: string, onPhaseChange?: (phase: string) => void) => Promise<void>;
   shareJobWithCandidate: (candidateId: string, externalJob: ExternalJob) => Promise<void>;
+  bulkShareJobs: (candidateIds: string[], externalJobs: ExternalJob[]) => Promise<void>;
+  respondToJobFeedback: (candidateId: string, jobId: string, feedback: 'like' | 'reject') => void;
   addInterview: (interview: Interview) => void;
   updateInterviewStatus: (id: string, status: Interview['status']) => void;
   addRecruiter: (recruiter: RecruiterStats) => void;
@@ -38,7 +40,7 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'recruitflow_persistence_v2';
+const STORAGE_KEY = 'recruitflow_persistence_v3';
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const getInitialData = () => {
@@ -105,7 +107,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateCandidateStatus = (id: string, status: string, stageId: string) => setCandidates(prev => prev.map(c => c.id === id ? { ...c, status, stageId } : c));
   
   const updateCandidateNotes = (id: string, notes: string) => {
-    setCandidates(prev => prev.map(c => c.id === id ? { ...c, notes } : c));
+    setCandidates(prev => prev.map(c => {
+      if (c.id === id) return { ...c, notes };
+      return c;
+    }));
     addActivity({
       id: `act_note_${Date.now()}`,
       type: 'Note',
@@ -138,18 +143,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const exJob = externalJobs.find(j => j.id === externalJobId);
     if (!exJob) return;
 
-    // PROTOCOL START
     onPhaseChange?.('Elite Bench (Open to Work)');
     await new Promise(r => setTimeout(r, 1200));
 
-    // Phase 1: Elite Bench Scan
     const benchMatches = talentProfiles.filter(p => 
       p.status === 'Bench' && 
       (p.title.toLowerCase().includes(exJob.title.toLowerCase().split(' ')[0]) || 
        exJob.title.toLowerCase().includes(p.title.toLowerCase()))
     );
 
-    // Phase 2: Active Pool Scan
     onPhaseChange?.('Neural Pool (Passive Scan)');
     await new Promise(r => setTimeout(r, 1500));
     const poolMatches = candidates.filter(c => 
@@ -157,13 +159,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       !benchMatches.some(b => b.name === `${c.firstName} ${c.lastName}`)
     );
 
-    // Phase 3: External Discovery
     onPhaseChange?.('Market Discovery (Discovery Tier)');
     await new Promise(r => setTimeout(r, 1800));
 
     const finalCandidates: Candidate[] = [];
 
-    // Map Elite Bench (Top Priority)
     benchMatches.forEach(p => {
         finalCandidates.push({
             id: `sourced_bench_${Date.now()}_${p.id}`,
@@ -178,11 +178,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             lastActivity: 'Sourced: Elite Bench (Preference 1)',
             avatarUrl: p.avatarUrl,
             notes: 'SYSTEM PRIORITY 1: This candidate is ON BENCH and actively seeking a new mission.',
-            isOpenToWork: true // Sourced from bench are always open to work
+            isOpenToWork: true 
         });
     });
 
-    // Map Active Pool (Preference 2)
     poolMatches.slice(0, 2).forEach(c => {
         const priorityBonus = c.isOpenToWork ? 10 : 0;
         finalCandidates.push({
@@ -194,7 +193,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
     });
 
-    // Final supplementary Discovery
     if (finalCandidates.length < 3) {
         finalCandidates.push({
             id: `sourced_ext_${Date.now()}`,
@@ -230,10 +228,76 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
+  const bulkShareJobs = async (candidateIds: string[], exJobs: ExternalJob[]) => {
+    const jobIds = exJobs.map(j => j.id);
+    
+    setCandidates(prev => prev.map(c => {
+      if (candidateIds.includes(c.id)) {
+        const currentShared = c.sharedJobIds || [];
+        const newShared = Array.from(new Set([...currentShared, ...jobIds]));
+        return { ...c, sharedJobIds: newShared };
+      }
+      return c;
+    }));
+
+    candidateIds.forEach(cId => {
+      addActivity({
+        id: `bulk_share_${Date.now()}_${cId}`,
+        type: 'JobShared',
+        subject: 'Mission Payload Transmitted',
+        content: `Recruiter shared ${exJobs.length} handpicked missions: ${exJobs.map(j => j.title).join(', ')}. Syncing to Candidate Portal.`,
+        timestamp: new Date().toISOString(),
+        author: 'Alex Morgan',
+        entityId: cId
+      });
+    });
+
+    notify("Transmission Successful", `Synced ${exJobs.length} missions to ${candidateIds.length} candidate portals.`, "success");
+  };
+
+  const respondToJobFeedback = (candidateId: string, jobId: string, feedback: 'like' | 'reject') => {
+    const candidate = candidates.find(c => c.id === candidateId);
+    const job = externalJobs.find(j => j.id === jobId);
+    
+    setCandidates(prev => prev.map(c => {
+      if (c.id === candidateId) {
+        const liked = c.likedJobIds || [];
+        const rejected = c.rejectedJobIds || [];
+        
+        if (feedback === 'like') {
+            return { 
+                ...c, 
+                likedJobIds: [...liked.filter(id => id !== jobId), jobId],
+                rejectedJobIds: rejected.filter(id => id !== jobId)
+            };
+        } else {
+            return { 
+                ...c, 
+                likedJobIds: liked.filter(id => id !== jobId),
+                rejectedJobIds: [...rejected.filter(id => id !== jobId), jobId]
+            };
+        }
+      }
+      return c;
+    }));
+
+    if (candidate && job) {
+        addActivity({
+            id: `fb_${Date.now()}`,
+            type: 'CandidateFeedback',
+            subject: `Neural Resonance: ${feedback === 'like' ? 'High' : 'Low'}`,
+            content: `${candidate.firstName} ${feedback === 'like' ? 'flagged as Interested' : 'dismissed'} the mission: ${job.title} at ${job.company}.`,
+            timestamp: new Date().toISOString(),
+            author: candidate.firstName,
+            entityId: candidateId
+        });
+    }
+  };
+
   return (
     <StoreContext.Provider value={{
       userRole, branding, setUserRole, updateBranding, jobs, candidates, interviews, externalJobs, talentProfiles, activities, placements, recruiterStats, notifications,
-      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, shareJobWithCandidate, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
+      addJob, addCandidate, removeCandidate, addTalentProfile, updateJobStatus, updateCandidateStatus, updateCandidateNotes, updateCandidateProfile, addActivity, sourceCandidatesForJob, shareJobWithCandidate, bulkShareJobs, respondToJobFeedback, addInterview, updateInterviewStatus, addRecruiter, removeRecruiter, notify, removeNotification
     }}>
       {children}
     </StoreContext.Provider>

@@ -14,7 +14,8 @@ import {
   Clock,
   History,
   Zap,
-  MoreVertical
+  MoreVertical,
+  Briefcase as BriefcaseIcon
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { Activity } from '../types';
@@ -64,14 +65,13 @@ const AgencyActivityLog: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 font-sans">
-      {/* Header & Stats */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
              <History size={32} className="text-brand-600" />
-             Agency Pulse
+             Activity History
           </h2>
-          <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Real-time operational activity log</p>
+          <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Real-time recruitment activity log</p>
         </div>
         <div className="flex gap-4">
             <div className="bg-white px-6 py-3 rounded-2xl border border-slate-200 shadow-sm">
@@ -79,23 +79,22 @@ const AgencyActivityLog: React.FC = () => {
                 <p className="text-xl font-black text-slate-900">{activities.length}</p>
             </div>
             <div className="bg-brand-600 px-6 py-3 rounded-2xl shadow-xl shadow-brand-600/20 text-white">
-                <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">Human Actions</p>
+                <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">Recruiter Actions</p>
                 <p className="text-xl font-black">{activities.filter(a => !a.author.toLowerCase().includes('bot') && !a.author.toLowerCase().includes('ai')).length}</p>
             </div>
             <div className="bg-slate-900 px-6 py-3 rounded-2xl shadow-xl shadow-slate-900/20 text-white">
-                <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">AI Automated</p>
+                <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">AI Actions</p>
                 <p className="text-xl font-black">{activities.filter(a => a.author.toLowerCase().includes('bot') || a.author.toLowerCase().includes('ai')).length}</p>
             </div>
         </div>
       </div>
 
-      {/* Filter Bar */}
       <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center">
         <div className="relative flex-1 group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-600 transition-colors" size={20} />
             <input 
                 type="text"
-                placeholder="Search by author, subject, or content..."
+                placeholder="Search history..."
                 className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none font-bold text-sm shadow-inner"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -118,15 +117,12 @@ const AgencyActivityLog: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Timeline */}
       <div className="relative space-y-6 pb-20">
-        {/* The Pulse Line */}
         <div className="absolute left-[47px] top-4 bottom-4 w-1 bg-slate-100 rounded-full"></div>
 
         {filteredActivities.length > 0 ? (
           filteredActivities.map((activity, idx) => (
             <div key={activity.id} className="relative flex gap-8 group animate-in slide-in-from-bottom-4 duration-300" style={{ animationDelay: `${idx * 50}ms` }}>
-               {/* Time Badge */}
                <div className="w-24 pt-2 text-right shrink-0">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     {new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -136,7 +132,6 @@ const AgencyActivityLog: React.FC = () => {
                   </p>
                </div>
 
-               {/* Indicator */}
                <div className="relative z-10">
                   <div className={`w-12 h-12 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center text-white transition-transform group-hover:scale-110 ${getColor(activity.type)}`}>
                     {getIcon(activity.type)}
@@ -148,7 +143,6 @@ const AgencyActivityLog: React.FC = () => {
                   )}
                </div>
 
-               {/* Card Content */}
                <div className="flex-1 bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-xl hover:border-brand-100 transition-all group/card">
                   <div className="flex justify-between items-start mb-4">
                      <div>
@@ -178,33 +172,11 @@ const AgencyActivityLog: React.FC = () => {
                            <BriefcaseIcon size={14} />
                         </div>
                         <div>
-                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Affected Candidate</p>
+                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Candidate</p>
                            <p className="text-xs font-black text-slate-900 tracking-tight uppercase">{getCandidateName(activity.entityId)}</p>
                         </div>
                      </div>
                      <button className="flex items-center gap-1 text-[10px] font-black text-brand-600 uppercase tracking-widest hover:gap-2 transition-all">
-                        Inspect Node <ArrowUpRight size={14} />
+                        View Profile <ArrowUpRight size={14} />
                      </button>
-                  </div>
-               </div>
-            </div>
-          ))
-        ) : (
-          <div className="py-20 text-center bg-white rounded-[2.5rem] border border-slate-100 border-dashed">
-             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                <Clock size={32} className="text-slate-300" />
-             </div>
-             <h3 className="text-xl font-bold text-slate-900">No events found</h3>
-             <p className="text-slate-500 mt-1">Try adjusting your filters or search terms.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const BriefcaseIcon = ({ size }: { size: number }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-);
-
-export default AgencyActivityLog;
+                  
