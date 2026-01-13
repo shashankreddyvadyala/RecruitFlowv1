@@ -9,14 +9,19 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Send, Zap, Trophy, HelpCircle, Info, Calendar, ArrowUpRight, TrendingUp } from 'lucide-react';
+import { Send, Zap, Trophy, HelpCircle, Info, Calendar, ArrowUpRight, TrendingUp, Users } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 type TimeRange = '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
-const BASE_CHART_DATA = [
-  { name: 'P1', value: 12 }, { name: 'P2', value: 18 }, { name: 'P3', value: 15 },
-  { name: 'P4', value: 22 }, { name: 'P5', value: 30 }, { name: 'P6', value: 25 }, { name: 'P7', value: 35 },
+const BASE_CHART_VALUES = [
+  { inflow: 8, submissions: 12 }, 
+  { inflow: 14, submissions: 18 }, 
+  { inflow: 10, submissions: 15 },
+  { inflow: 18, submissions: 22 }, 
+  { inflow: 25, submissions: 30 }, 
+  { inflow: 20, submissions: 25 }, 
+  { inflow: 30, submissions: 35 },
 ];
 
 const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
@@ -52,15 +57,28 @@ interface DashboardStatsProps {
 }
 
 const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
-  const { interviews, recruiterStats } = useStore();
+  const { interviews, recruiterStats, candidates } = useStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
 
   const multipliers: Record<TimeRange, number> = {
     '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
   };
+
+  const getLabels = (range: TimeRange) => {
+    switch (range) {
+      case '7D': return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      case '1M': return ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6', 'Week 7'];
+      case '3M':
+      case '6M': return ['Month 1', 'Month 2', 'Month 3', 'Month 4', 'Month 5', 'Month 6', 'Month 7'];
+      case '1Y':
+      case 'ALL': return ['Jan', 'Mar', 'May', 'Jul', 'Sep', 'Nov', 'Dec'];
+      default: return ['1', '2', '3', '4', '5', '6', '7'];
+    }
+  };
   
   const stats = useMemo(() => {
     const mult = multipliers[timeRange];
+    const labels = getLabels(timeRange);
     const baseStats = recruiterStats.reduce((acc, curr) => ({
         apps: acc.apps + curr.applications,
         moves: acc.moves + curr.stageProgressions,
@@ -71,10 +89,15 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
         submissions: Math.round(baseStats.apps * mult).toLocaleString(),
         movements: Math.round(baseStats.moves * mult).toLocaleString(),
         placements: Math.round(baseStats.hires * mult).toLocaleString(),
+        candidates: candidates.length.toLocaleString(),
         trend: timeRange === '7D' ? '+4%' : '+18%',
-        chartData: BASE_CHART_DATA.map(d => ({ ...d, value: Math.round(d.value * mult) }))
+        chartData: BASE_CHART_VALUES.map((d, idx) => ({ 
+            name: labels[idx] || `P${idx + 1}`, 
+            inflow: Math.round(d.inflow * mult),
+            submissions: Math.round(d.submissions * mult)
+        }))
     };
-  }, [timeRange, recruiterStats]);
+  }, [timeRange, recruiterStats, candidates]);
 
   const timeOptions: { label: string, value: TimeRange }[] = [
     { label: '7D', value: '7D' }, { label: '1M', value: '1M' }, { label: '3M', value: '3M' },
@@ -104,7 +127,16 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <StatCard 
+          title="Total Candidates" 
+          value={stats.candidates} 
+          sub="Live Pool" 
+          trend="neutral"
+          icon={<Users size={24} />} 
+          color="bg-brand-600" 
+          description="Total candidates currently registered in the agency talent cloud."
+        />
         <StatCard 
           title="Total Submissions" 
           value={stats.submissions} 
@@ -138,19 +170,29 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
         <div className="lg:col-span-2 bg-white p-10 rounded-3xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-12">
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dynamic Range Tracking</p>
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Historical Momentum</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Market & Pipeline Flow</p>
+              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Inflow & Submissions</h3>
             </div>
-            <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-brand-500 rounded-full"></div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aggregate Score Profile</span>
+            <div className="flex flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Inflow</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-brand-500 rounded-full"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Submissions</span>
+                </div>
             </div>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats.chartData}>
                 <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorInflow" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorSubmissions" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
@@ -160,9 +202,27 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 900}} dx={-10} />
                 <Tooltip 
                   contentStyle={{borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)', padding: '20px'}}
-                  labelStyle={{fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px'}}
+                  labelStyle={{fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', fontSize: '10px', marginBottom: '8px'}}
+                  itemStyle={{fontSize: '11px', fontWeight: 700, textTransform: 'uppercase'}}
                 />
-                <Area type="monotone" dataKey="value" stroke="#3b82f6" fillOpacity={1} fill="url(#colorValue)" strokeWidth={4} />
+                <Area 
+                    type="monotone" 
+                    dataKey="inflow" 
+                    name="Inflow"
+                    stroke="#10b981" 
+                    fillOpacity={1} 
+                    fill="url(#colorInflow)" 
+                    strokeWidth={4} 
+                />
+                <Area 
+                    type="monotone" 
+                    dataKey="submissions" 
+                    name="Submissions"
+                    stroke="#3b82f6" 
+                    fillOpacity={1} 
+                    fill="url(#colorSubmissions)" 
+                    strokeWidth={4} 
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
