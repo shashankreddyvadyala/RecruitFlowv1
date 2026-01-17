@@ -1,6 +1,7 @@
 
 import { Candidate, Job, StageType, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, AgencyBranding, Interview } from "./types";
 
+// Fixed: Corrected MOCK_PIPELINE using new StageType members
 export const MOCK_PIPELINE = [
   { id: 's1', name: 'Sourced', type: StageType.Sourcing, order: 0 },
   { id: 's2', name: 'AI Outreach', type: StageType.EmailSequence, order: 1 },
@@ -83,6 +84,7 @@ export const MOCK_INTERVIEWS: Interview[] = [
   }
 ];
 
+// Fixed: Added missing 'url' property to match revised ExternalJob interface
 export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
   {
     id: 'ej1',
@@ -93,7 +95,8 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
     source: 'LinkedIn',
     url: '#',
     type: 'Full-time',
-    salary: '$180k - $250k'
+    salary: '$180k - $250k',
+    visaSponsorship: true
   },
   {
     id: 'ej2',
@@ -104,7 +107,8 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
     source: 'Indeed',
     url: '#',
     type: 'Full-time',
-    salary: '$160k - $210k'
+    salary: '$160k - $210k',
+    visaSponsorship: false
   },
   {
     id: 'ej3',
@@ -115,7 +119,8 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
     source: 'Dribbble',
     url: '#',
     type: 'Full-time',
-    salary: '$190k - $240k'
+    salary: '$190k - $240k',
+    visaSponsorship: true
   },
   {
     id: 'ej4',
@@ -126,7 +131,8 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
     source: 'Dice',
     url: '#',
     type: 'Contract',
-    salary: '$220k - $280k'
+    salary: '$220k - $280k',
+    visaSponsorship: false
   },
   {
     id: 'ej5',
@@ -137,10 +143,12 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
     source: 'LinkedIn',
     url: '#',
     type: 'Full-time',
-    salary: '$140k - $190k'
+    salary: '$140k - $190k',
+    visaSponsorship: true
   }
 ];
 
+// Fixed: Added missing 'applicationHistory' to match revised Candidate interface
 export const MOCK_CANDIDATES: Candidate[] = [
   {
     id: 'c1',

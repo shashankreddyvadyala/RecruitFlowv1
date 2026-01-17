@@ -1,10 +1,12 @@
 
 export enum StageType {
   Sourcing = 'SOURCING',
-  EmailSequence = 'EMAIL_SEQUENCE',
   AIScreening = 'AI_SCREENING',
-  HumanInterview = 'HUMAN_INTERVIEW',
-  Offer = 'OFFER'
+  Interview = 'INTERVIEW',
+  Offer = 'OFFER',
+  Hired = 'HIRED',
+  EmailSequence = 'EMAIL_SEQUENCE',
+  HumanInterview = 'HUMAN_INTERVIEW'
 }
 
 export enum UserRole {
@@ -13,30 +15,15 @@ export enum UserRole {
   Candidate = 'CANDIDATE'
 }
 
-export interface PipelineStage {
-  id: string;
+export interface Skill {
   name: string;
-  type: StageType;
-  order: number;
-}
-
-export interface OptimizationInsight {
-  id: string;
-  category: 'Tax' | 'Compliance' | 'HTS';
-  title: string;
-  description: string;
-  savingsPotential?: string;
-  htsCode?: string;
-  actionLabel: string;
-  severity: 'high' | 'medium' | 'low';
+  years: number;
 }
 
 export interface Education {
   degree: string;
   institution: string;
   year: string;
-  fieldOfStudy?: string;
-  description?: string;
 }
 
 export interface WorkExperience {
@@ -50,28 +37,14 @@ export interface WorkExperience {
   description: string;
 }
 
-export interface Skill {
-  name: string;
-  years: number;
-  category?: 'Technical' | 'Soft' | 'Tool';
-}
-
-export interface ResumeFile {
-  id: string;
-  name: string;
-  url: string;
-  updatedAt: string;
-  type: 'PDF' | 'DOCX';
-}
-
-export interface CandidateApplication {
+export interface ApplicationHistory {
   id: string;
   jobTitle: string;
   company: string;
-  status: 'Hired' | 'Rejected' | 'Withdrawn' | 'Offer' | 'In Progress';
+  status: string;
   appliedDate: string;
   outcomeDate?: string;
-  notes: string; // The "Reason" for the outcome
+  notes?: string;
 }
 
 export interface Candidate {
@@ -83,53 +56,23 @@ export interface Candidate {
   role: string;
   status: string;
   stageId: string;
-  matchScore: number; 
+  matchScore: number;
   aiSummary?: string;
   skills: Skill[];
   lastActivity: string;
   avatarUrl: string;
-  companyId?: string;
-  portalToken?: string; 
-  notes?: string; 
-  candidateTimezone?: string;
-  availability?: string;
+  notes?: string;
   isOpenToWork?: boolean;
-  yearsOfExperience?: number;
+  salaryExpectation?: string;
+  workMode?: string;
+  noticePeriod?: string;
+  workAuthorization?: string;
+  sharedJobIds?: string[];
   education?: Education[];
   workHistory?: WorkExperience[];
-  htsClassification?: string;
-  taxOptimizationApplied?: boolean;
-  preferredRoles?: string[];
-  preferredLocations?: string[];
-  employmentType?: string;
-  workMode?: string;
-  salaryExpectation?: string;
-  noticePeriod?: string;
-  relocationWillingness?: 'None' | 'Local' | 'Regional' | 'International';
-  workAuthorization?: string;
-  industryPreference?: string[];
-  resumes?: ResumeFile[];
-  sharedJobIds?: string[];
+  applicationHistory?: ApplicationHistory[];
   likedJobIds?: string[];
   rejectedJobIds?: string[];
-  applicationHistory?: CandidateApplication[];
-  socialLinks?: {
-    linkedin?: string;
-    github?: string;
-    portfolio?: string;
-  };
-}
-
-export interface Job {
-  id: string;
-  title: string;
-  client: string;
-  clientId?: string;
-  department: string;
-  location: string;
-  candidatesCount: number;
-  pipeline: PipelineStage[];
-  status: 'Active' | 'Draft' | 'Closed';
 }
 
 export interface ExternalJob {
@@ -139,11 +82,72 @@ export interface ExternalJob {
   location: string;
   postedAt: string;
   source: string;
-  url: string;
   type: string;
-  logoUrl?: string;
   salary?: string;
   matchScore?: number;
+  url?: string;
+  visaSponsorship?: boolean; // New property
+}
+
+export interface Activity {
+  id: string;
+  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StatusChange' | 'ProfileUpdate' | 'JobShared' | 'CandidateFeedback';
+  subject: string;
+  content: string;
+  timestamp: string;
+  author: string;
+  entityId: string;
+}
+
+export interface AgencyBranding {
+  companyName: string;
+  logoUrl: string;
+  primaryColor: string;
+  tagline: string;
+  senderEmail?: string;
+  signature?: string;
+}
+
+export interface Interview {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  jobId: string;
+  jobTitle: string;
+  interviewerName: string;
+  startTime: string;
+  endTime: string;
+  location?: string;
+  status: 'Scheduled' | 'Completed' | 'Cancelled';
+  type: string;
+  notes?: string;
+  candidateTimezone?: string;
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  timestamp: string;
+}
+
+export interface PipelineStage {
+  id: string;
+  name: string;
+  type: StageType;
+  order: number;
+}
+
+export interface Job {
+  id: string;
+  title: string;
+  client: string;
+  department: string;
+  location: string;
+  candidatesCount: number;
+  pipeline: PipelineStage[];
+  status: 'Active' | 'Draft' | 'Closed' | 'On Hold';
 }
 
 export interface CandidateProfile {
@@ -156,17 +160,6 @@ export interface CandidateProfile {
   bio: string;
   status: string;
   avatarUrl: string;
-  resumeUrl?: string;
-}
-
-export interface Activity {
-  id: string;
-  type: 'Email' | 'Call' | 'Meeting' | 'Note' | 'StageChange' | 'Optimization' | 'ProfileUpdate' | 'ResumeUpload' | 'JobApplication' | 'JobShared' | 'CandidateFeedback';
-  subject: string;
-  content: string;
-  timestamp: string;
-  author: string;
-  entityId: string;
 }
 
 export interface Placement {
@@ -176,7 +169,7 @@ export interface Placement {
   clientName: string;
   placedDate: string;
   recruiterName: string;
-  status: 'Confirmed' | 'Pending';
+  status: string;
 }
 
 export interface RecruiterStats {
@@ -192,56 +185,12 @@ export interface RecruiterStats {
   activeJobs: number;
 }
 
-export interface AgencyBranding {
-  companyName: string;
-  logoUrl: string;
-  primaryColor: string;
-  tagline: string;
-  senderEmail?: string;
-  signature?: string;
-}
-
 export interface RecruiterSettings {
   fullName: string;
   jobTitle: string;
   email: string;
   signature: string;
-  avatarUrl?: string;
-}
-
-export interface Interview {
-  id: string;
-  candidateId: string;
-  candidateName: string;
-  jobId: string;
-  jobTitle: string;
-  interviewerName: string;
-  startTime: string;
-  endTime: string;
-  location?: string;
-  status: 'Scheduled' | 'Completed' | 'Cancelled';
-  type: 'Technical' | 'Culture' | 'Screening';
-  notes?: string;
-  candidateTimezone?: string;
-  reminderSent?: boolean;
-}
-
-export interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  timestamp: string;
-}
-
-export interface GeneratedEmail {
-  subject: string;
-  body: string;
-}
-
-export interface ApplicationMaterials {
-  coverLetter: string;
-  tailoredResumeSummary: string;
+  avatarUrl: string;
 }
 
 export interface Portal {
@@ -257,4 +206,32 @@ export interface SubmissionTracker {
   portalId: string;
   status: 'Pending' | 'Opened' | 'Submitted';
   timestamp?: string;
+}
+
+export interface GeneratedEmail {
+  subject: string;
+  body: string;
+}
+
+export interface ApplicationMaterials {
+  coverLetter: string;
+  tailoredResumeSummary: string;
+}
+
+export interface OptimizationInsight {
+  id: string;
+  category: string;
+  title: string;
+  description: string;
+  savingsPotential: string;
+  htsCode: string;
+  actionLabel: string;
+  severity: string;
+}
+
+export interface ResumeFile {
+  id: string;
+  fileName: string;
+  uploadDate: string;
+  content: string;
 }

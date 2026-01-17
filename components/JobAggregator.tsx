@@ -22,7 +22,9 @@ import {
   Clock,
   Layers,
   Settings2,
-  Undo2
+  Undo2,
+  UserSearch,
+  ShieldAlert
 } from 'lucide-react';
 import { ExternalJob, Candidate } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -34,6 +36,7 @@ interface AdvancedFilters {
   experience: string[];
   salaryMin: string;
   postedDate: string;
+  visaSponsorship: string; // New property: 'All' | 'Offers' | 'No'
 }
 
 const JobAggregator: React.FC = () => {
@@ -48,18 +51,20 @@ const JobAggregator: React.FC = () => {
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [candidateStatusFilter, setCandidateStatusFilter] = useState<'all' | 'openToWork' | 'passive'>('all');
+  const [candidateSearchInDrawer, setCandidateSearchInDrawer] = useState('');
 
   const [filters, setFilters] = useState<AdvancedFilters>({
     type: [],
     workMode: [],
     experience: [],
     salaryMin: '',
-    postedDate: 'All'
+    postedDate: 'All',
+    visaSponsorship: 'All'
   });
 
   useEffect(() => {
     handleSearch();
-  }, []);
+  }, [filters]);
 
   const handleSearch = async () => {
     setIsLoadingJobs(true);
@@ -83,7 +88,13 @@ const JobAggregator: React.FC = () => {
           // Temporal Filter
           if (filters.postedDate !== 'All') {
               if (filters.postedDate === '24h' && !job.postedAt.includes('h')) return false;
-              if (filters.postedDate === '7d' && job.postedAt.includes('m')) return false; // Simple logic for mock
+              if (filters.postedDate === '7d' && job.postedAt.includes('m')) return false; 
+          }
+
+          // Visa Sponsorship Filter
+          if (filters.visaSponsorship !== 'All') {
+              const offers = filters.visaSponsorship === 'Offers';
+              if (job.visaSponsorship !== offers) return false;
           }
 
           return true;
@@ -101,6 +112,7 @@ const JobAggregator: React.FC = () => {
     setFilters(prev => {
         if (category === 'postedDate') return { ...prev, postedDate: value };
         if (category === 'salaryMin') return { ...prev, salaryMin: value };
+        if (category === 'visaSponsorship') return { ...prev, visaSponsorship: value };
 
         const current = prev[category] as string[];
         const updated = current.includes(value) 
@@ -116,11 +128,11 @@ const JobAggregator: React.FC = () => {
         workMode: [],
         experience: [],
         salaryMin: '',
-        postedDate: 'All'
+        postedDate: 'All',
+        visaSponsorship: 'All'
     });
     setSearchQuery('');
     setLocationQuery('');
-    handleSearch();
   };
 
   const matchedCandidates = useMemo(() => {
@@ -128,9 +140,18 @@ const JobAggregator: React.FC = () => {
     
     return candidates
       .filter(c => {
-        if (candidateStatusFilter === 'all') return true;
-        if (candidateStatusFilter === 'openToWork') return c.isOpenToWork;
-        if (candidateStatusFilter === 'passive') return !c.isOpenToWork;
+        // Status Filter
+        if (candidateStatusFilter === 'openToWork' && !c.isOpenToWork) return false;
+        if (candidateStatusFilter === 'passive' && c.isOpenToWork) return false;
+        
+        // Text Search Filter (Name or Role)
+        if (candidateSearchInDrawer) {
+            const search = candidateSearchInDrawer.toLowerCase();
+            const fullName = `${c.firstName} ${c.lastName}`.toLowerCase();
+            const role = c.role.toLowerCase();
+            if (!fullName.includes(search) && !role.includes(search)) return false;
+        }
+
         return true;
       })
       .map(c => {
@@ -141,7 +162,7 @@ const JobAggregator: React.FC = () => {
         return { ...c, currentMatchScore: score };
       })
       .sort((a, b) => b.currentMatchScore - a.currentMatchScore);
-  }, [activeJobDetail, candidates, candidateStatusFilter]);
+  }, [activeJobDetail, candidates, candidateStatusFilter, candidateSearchInDrawer]);
 
   const handleToggleCandidate = (id: string) => {
     setSelectedCandidateIds(prev => 
@@ -159,7 +180,7 @@ const JobAggregator: React.FC = () => {
     setActiveJobDetail(null);
   };
 
-  const hasActiveFilters = filters.type.length > 0 || filters.workMode.length > 0 || filters.experience.length > 0 || filters.salaryMin !== '' || filters.postedDate !== 'All';
+  const hasActiveFilters = filters.type.length > 0 || filters.workMode.length > 0 || filters.experience.length > 0 || filters.salaryMin !== '' || filters.postedDate !== 'All' || filters.visaSponsorship !== 'All';
 
   return (
     <div className="h-full flex flex-col space-y-6 relative pb-12 font-sans">
@@ -214,17 +235,17 @@ const JobAggregator: React.FC = () => {
           </div>
           <button 
             onClick={handleSearch}
-            className="bg-slate-900 text-white px-12 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl shadow-slate-900/20 active:scale-95 flex items-center gap-3"
+            className="bg-slate-900 text-white px-12 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl shadow-slate-900/20 active:scale-95 flex items-center justify-center gap-3"
           >
-            {isLoadingJobs ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-            Scan Markets
+            {isLoadingJobs ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+            Search
           </button>
         </div>
 
         {/* Advanced Filters Panel */}
         {showAdvanced && (
             <div className="mt-8 pt-8 border-t border-slate-100 animate-in slide-in-from-top-4 duration-500">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-8">
                     <div>
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Work Protocol</label>
                         <div className="flex flex-wrap gap-2">
@@ -262,6 +283,24 @@ const JobAggregator: React.FC = () => {
                                     active={filters.experience.includes(e)} 
                                     onClick={() => toggleFilter('experience', e)} 
                                     label={e} 
+                                />
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Visa Protocol</label>
+                        <div className="flex flex-wrap gap-2">
+                            {[
+                                { label: 'Offers Sponsorship', value: 'Offers' },
+                                { label: 'No Sponsorship', value: 'No' },
+                                { label: 'All', value: 'All' }
+                            ].map(v => (
+                                <TagButton 
+                                    key={v.value} 
+                                    active={filters.visaSponsorship === v.value} 
+                                    onClick={() => toggleFilter('visaSponsorship', v.value)} 
+                                    label={v.label} 
                                 />
                             ))}
                         </div>
@@ -307,6 +346,7 @@ const JobAggregator: React.FC = () => {
             {filters.type.map(t => <FilterChip key={t} label={t} onRemove={() => toggleFilter('type', t)} />)}
             {filters.workMode.map(m => <FilterChip key={m} label={m} onRemove={() => toggleFilter('workMode', m)} />)}
             {filters.experience.map(e => <FilterChip key={e} label={e} onRemove={() => toggleFilter('experience', e)} />)}
+            {filters.visaSponsorship !== 'All' && <FilterChip label={filters.visaSponsorship === 'Offers' ? 'Sponsorship' : 'No Visa'} onRemove={() => setFilters({...filters, visaSponsorship: 'All'})} />}
             {filters.salaryMin && <FilterChip label={`Min ${filters.salaryMin}`} onRemove={() => setFilters({...filters, salaryMin: ''})} />}
             {filters.postedDate !== 'All' && <FilterChip label={filters.postedDate} onRemove={() => setFilters({...filters, postedDate: 'All'})} />}
         </div>
@@ -318,7 +358,7 @@ const JobAggregator: React.FC = () => {
           jobs.map((job) => (
             <div 
               key={job.id} 
-              onClick={() => { setActiveJobDetail(job); setSelectedCandidateIds([]); setCandidateStatusFilter('all'); }}
+              onClick={() => { setActiveJobDetail(job); setSelectedCandidateIds([]); setCandidateStatusFilter('all'); setCandidateSearchInDrawer(''); }}
               className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 transition-all group hover:shadow-2xl hover:border-brand-500 cursor-pointer relative overflow-hidden"
             >
               <div className="flex flex-col md:flex-row gap-8 items-start">
@@ -328,7 +368,14 @@ const JobAggregator: React.FC = () => {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight truncate group-hover:text-brand-600 transition-colors">{job.title}</h3>
+                    <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight truncate group-hover:text-brand-600 transition-colors">{job.title}</h3>
+                        {job.visaSponsorship && (
+                            <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2 py-0.5 rounded border border-emerald-100 uppercase tracking-widest flex items-center gap-1 shadow-sm">
+                                <ShieldCheck size={10} /> Sponsorship Node
+                            </span>
+                        )}
+                    </div>
                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{job.postedAt} • {job.source}</span>
                   </div>
                   <p className="text-brand-600 font-black text-[11px] uppercase tracking-widest mb-4">{job.company}</p>
@@ -353,7 +400,7 @@ const JobAggregator: React.FC = () => {
           <div className="py-32 text-center bg-white rounded-[3rem] border border-slate-200 border-dashed">
              <Search size={56} className="text-slate-100 mx-auto mb-6" />
              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">No opportunities detected</h3>
-             <p className="text-slate-500 font-medium mt-2">Adjust your neural parameters or clear filters to reset the scanner.</p>
+             <p className="text-slate-500 font-medium mt-2">Adjust your parameters or clear filters to reset the search.</p>
              <button 
                 onClick={clearFilters}
                 className="mt-8 px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
@@ -381,7 +428,10 @@ const JobAggregator: React.FC = () => {
                     {activeJobDetail.company[0]}
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">{activeJobDetail.title}</h3>
+                    <div className="flex items-center gap-3">
+                        <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">{activeJobDetail.title}</h3>
+                        {activeJobDetail.visaSponsorship && <ShieldCheck className="text-emerald-500" size={18} />}
+                    </div>
                     <p className="text-brand-600 font-black text-[10px] uppercase tracking-widest mt-2">{activeJobDetail.company} • {activeJobDetail.location}</p>
                   </div>
                 </div>
@@ -393,31 +443,53 @@ const JobAggregator: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 py-1 bg-white border border-slate-200 rounded-lg">
-                    Neural Ranker
-                  </span>
-                  <div className="h-px w-12 bg-slate-200" />
-                </div>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 py-1 bg-white border border-slate-200 rounded-lg">
+                      AI Ranker
+                    </span>
+                    <div className="h-px w-12 bg-slate-200" />
+                  </div>
 
-                <div className="flex items-center gap-1 p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <FilterButton 
-                    active={candidateStatusFilter === 'all'} 
-                    onClick={() => setCandidateStatusFilter('all')} 
-                    label="All" 
-                  />
-                  <FilterButton 
-                    active={candidateStatusFilter === 'openToWork'} 
-                    onClick={() => setCandidateStatusFilter('openToWork')} 
-                    label="Open to Work" 
-                    icon={<Star size={12} className={candidateStatusFilter === 'openToWork' ? 'fill-emerald-500 text-emerald-500' : ''} />}
-                  />
-                  <FilterButton 
-                    active={candidateStatusFilter === 'passive'} 
-                    onClick={() => setCandidateStatusFilter('passive')} 
-                    label="Passive" 
-                  />
+                  <div className="flex items-center gap-1 p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
+                    <FilterButton 
+                      active={candidateStatusFilter === 'all'} 
+                      onClick={() => setCandidateStatusFilter('all')} 
+                      label="All" 
+                    />
+                    <FilterButton 
+                      active={candidateStatusFilter === 'openToWork'} 
+                      onClick={() => setCandidateStatusFilter('openToWork')} 
+                      label="Open to Work" 
+                      icon={<Star size={12} className={candidateStatusFilter === 'openToWork' ? 'fill-emerald-500 text-emerald-500' : ''} />}
+                    />
+                    <FilterButton 
+                      active={candidateStatusFilter === 'passive'} 
+                      onClick={() => setCandidateStatusFilter('passive')} 
+                      label="Passive" 
+                    />
+                  </div>
+                </div>
+                
+                {/* Search Candidates Input */}
+                <div className="relative group">
+                    <UserSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-600 transition-colors" size={16} />
+                    <input 
+                        type="text" 
+                        placeholder="Search candidates by name or role..." 
+                        className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none font-bold text-[11px] shadow-sm transition-all"
+                        value={candidateSearchInDrawer}
+                        onChange={(e) => setCandidateSearchInDrawer(e.target.value)}
+                    />
+                    {candidateSearchInDrawer && (
+                        <button 
+                            onClick={() => setCandidateSearchInDrawer('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-300 hover:text-slate-500 transition-colors"
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
                 </div>
               </div>
             </div>
@@ -428,12 +500,15 @@ const JobAggregator: React.FC = () => {
                 <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2">
                   <BrainCircuit size={16} className="text-brand-600" /> Candidate Synchronization
                 </h4>
-                <button 
-                  onClick={() => setSelectedCandidateIds(matchedCandidates.map(c => c.id))}
-                  className="text-[10px] font-black text-brand-600 uppercase tracking-widest hover:underline"
-                >
-                  Select All
-                </button>
+                <div className="flex items-center gap-4">
+                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{matchedCandidates.length} Node(s) Identified</span>
+                    <button 
+                      onClick={() => setSelectedCandidateIds(matchedCandidates.map(c => c.id))}
+                      className="text-[10px] font-black text-brand-600 uppercase tracking-widest hover:underline"
+                    >
+                      Select All
+                    </button>
+                </div>
               </div>
 
               <div className="space-y-3 pb-12">

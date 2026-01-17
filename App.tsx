@@ -250,7 +250,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
     </div>
   );
 }
-// Rest of the file unchanged...
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authView, setAuthView] = useState<'landing' | 'login' | 'signup'>('landing');
