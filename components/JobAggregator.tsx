@@ -308,7 +308,7 @@ const JobAggregator: React.FC = () => {
                 </div>
                 <div className="shrink-0 pt-4 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="bg-brand-50 text-brand-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 shadow-lg shadow-brand-500/10">
-                    Neural Match <ArrowRight size={14} />
+                    Click for Details <ArrowRight size={14} />
                   </div>
                 </div>
               </div>
