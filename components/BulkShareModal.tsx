@@ -53,7 +53,7 @@ const BulkShareModal: React.FC<BulkShareModalProps> = ({ selectedCandidates, onC
                     <Send size={24} />
                 </div>
                 <div>
-                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Opportunity Transmission</h3>
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Opportunity Submission</h3>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Targeting {selectedCandidates.length} Node(s)</p>
                 </div>
             </div>
@@ -155,14 +155,14 @@ const BulkShareModal: React.FC<BulkShareModalProps> = ({ selectedCandidates, onC
 
                     <section>
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
-                            <ShieldCheck size={16} className="text-emerald-500" /> Security & Transmission Details
+                            <ShieldCheck size={16} className="text-emerald-500" /> Security & Submission Details
                         </h4>
                         <div className="bg-slate-900 rounded-[2rem] p-8 text-white space-y-6 shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-10"></div>
                             <div className="grid grid-cols-2 gap-8 relative z-10">
                                 <div>
                                     <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Method</p>
-                                    <p className="text-sm font-black uppercase tracking-tight">Direct Neural Sync</p>
+                                    <p className="text-sm font-black uppercase tracking-tight">Direct Submission Sync</p>
                                 </div>
                                 <div>
                                     <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Encrypted</p>
@@ -183,7 +183,7 @@ const BulkShareModal: React.FC<BulkShareModalProps> = ({ selectedCandidates, onC
                     <div className="bg-brand-50 p-6 rounded-2xl border border-brand-100 flex gap-4">
                         <Sparkles className="text-brand-600 shrink-0" size={24} />
                         <p className="text-[11px] font-bold text-brand-700 leading-relaxed uppercase tracking-wide">
-                            Transmission will sync selected opportunities directly to candidate portals and trigger personalized outreach sequences for each pair.
+                            Submission will sync selected opportunities directly to candidate portals and trigger personalized outreach sequences for each pair.
                         </p>
                     </div>
                 </div>
@@ -203,12 +203,12 @@ const BulkShareModal: React.FC<BulkShareModalProps> = ({ selectedCandidates, onC
                         {isTransmitting ? (
                             <>
                                 <Loader2 size={18} className="animate-spin" />
-                                Synchronizing Neural Nodes...
+                                Synchronizing Submission Nodes...
                             </>
                         ) : (
                             <>
                                 <Send size={18} />
-                                Confirm & Initiate Transmission
+                                Confirm & Initiate Submission
                             </>
                         )}
                     </button>

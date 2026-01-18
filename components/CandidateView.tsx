@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-// Fix: Removed non-existent CandidateApplication import from types
-import { Candidate, Interview, ExternalJob, Skill, ResumeFile } from '../types';
+import { Candidate, Interview, ExternalJob, Skill, ResumeFile, UserRole } from '../types';
 import { analyzeCandidate, generateOutreachEmail, suggestInterviewSlots } from '../services/geminiService';
 import { 
   Mail, 
@@ -51,27 +51,32 @@ import {
   AlertCircle,
   ShieldAlert,
   Globe,
-  Scale
+  Scale,
+  User,
+  Trophy
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import ActivityTimeline from './ActivityTimeline';
-import BulkShareModal from './BulkShareModal';
 
-const CandidateView: React.FC = () => {
+type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
+type CandidateStatusFilter = 'all' | 'openToWork' | 'passive' | 'hired';
+
+interface CandidateViewProps {
+  initialFilter?: CandidateStatusFilter;
+}
+
+const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) => {
   const { 
     candidates, 
     activities, 
     branding, 
     externalJobs,
     interviews,
-    addCandidate, 
-    removeCandidate, 
-    addInterview, 
+    recruiterStats,
+    userRole,
+    removeCandidate,
     updateCandidateNotes, 
-    shareJobWithCandidate,
-    bulkShareJobs,
-    notify, 
-    addActivity 
+    notify 
   } = useStore();
   
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -81,26 +86,57 @@ const CandidateView: React.FC = () => {
   const [candidateNotes, setCandidateNotes] = useState('');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'openToWork' | 'passive'>('all');
+  const [statusFilter, setStatusFilter] = useState<CandidateStatusFilter>(initialFilter);
+  const [timeRange, setTimeRange] = useState<TimeRange>('ALL');
+
+  const isOwner = userRole === UserRole.Owner;
+
+  // Sync internal filter if prop changes (deep linking)
+  useEffect(() => {
+    setStatusFilter(initialFilter);
+  }, [initialFilter]);
 
   const activeCandidate = candidates.find(c => c.id === selectedCandidateId) || null;
 
   const filteredCandidates = useMemo(() => {
+    const now = new Date();
+    
     return candidates.filter(c => {
-      const matchesSearch = `${c.firstName} ${c.lastName} ${c.role} ${c.email}`.toLowerCase().includes(searchQuery.toLowerCase());
+      // 1. Basic Identity Filter
+      const matchesSearch = `${c.firstName} ${c.lastName} ${c.role} ${c.email} ${c.assignedRecruiter || ''}`.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // 2. Status Filter
       const matchesStatus = statusFilter === 'all' 
         || (statusFilter === 'openToWork' && c.isOpenToWork)
-        || (statusFilter === 'passive' && !c.isOpenToWork);
-      return matchesSearch && matchesStatus;
-    });
-  }, [candidates, searchQuery, statusFilter]);
+        || (statusFilter === 'passive' && !c.isOpenToWork)
+        || (statusFilter === 'hired' && (c.status === 'Hired' || c.status === 'Placed'));
 
-  const sortedResumes = useMemo(() => {
-    if (!activeCandidate?.resumes) return [];
-    return [...activeCandidate.resumes].sort((a, b) => 
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
-  }, [activeCandidate]);
+      // 3. Temporal Activity Filter
+      let matchesTime = true;
+      if (timeRange !== 'ALL') {
+        const candidateActivities = activities.filter(a => a.entityId === c.id);
+        if (candidateActivities.length === 0) {
+          matchesTime = false; // No activity ever
+        } else {
+          const latestActivityDate = new Date(Math.max(...candidateActivities.map(a => new Date(a.timestamp).getTime())));
+          const diffMs = now.getTime() - latestActivityDate.getTime();
+          const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+          switch (timeRange) {
+            case '1D': matchesTime = diffDays <= 1; break;
+            case '7D': matchesTime = diffDays <= 7; break;
+            case '1M': matchesTime = diffDays <= 30; break;
+            case '3M': matchesTime = diffDays <= 90; break;
+            case '6M': matchesTime = diffDays <= 180; break;
+            case '1Y': matchesTime = diffDays <= 365; break;
+            default: matchesTime = true;
+          }
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesTime;
+    });
+  }, [candidates, searchQuery, statusFilter, timeRange, activities]);
 
   const recommendedJobs = useMemo(() => {
     if (!activeCandidate) return [];
@@ -142,6 +178,20 @@ const CandidateView: React.FC = () => {
     }
   };
 
+  const handleDeleteCandidate = (candidate: Candidate, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm(`ARE YOU SURE? Permanently remove node [${candidate.firstName} ${candidate.lastName}] from the cloud?`)) {
+      removeCandidate(candidate.id);
+      notify("Node Removed", "Candidate identity purged from system.", "warning");
+    }
+  };
+
+  const getRecruiterAvatar = (name?: string) => {
+    if (!name) return null;
+    const rec = recruiterStats.find(r => r.name === name);
+    return rec?.avatarUrl || `https://picsum.photos/40/40?u=${encodeURIComponent(name)}`;
+  };
+
   return (
     <div className="h-full flex flex-col font-sans relative">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between mb-8 gap-6">
@@ -150,19 +200,33 @@ const CandidateView: React.FC = () => {
            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2">Active Intelligence Node</p>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
+                {(['1D', '7D', '1M', '3M', '6M', '1Y', 'ALL'] as TimeRange[]).map((opt) => (
+                    <button 
+                      key={opt} 
+                      onClick={() => setTimeRange(opt)} 
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${timeRange === opt ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      {opt}
+                    </button>
+                ))}
+            </div>
+
           <div className="flex bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
              <FilterButton active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} label="All" />
              <FilterButton active={statusFilter === 'openToWork'} onClick={() => setStatusFilter('openToWork')} label="Open" />
+             <FilterButton active={statusFilter === 'hired'} onClick={() => setStatusFilter('hired')} label="Hired" icon={<Trophy size={12}/>} />
           </div>
+
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
             <input 
               type="text" 
-              placeholder="Filter by name, role, or skill..." 
+              placeholder="Filter by name, role..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-12 pr-6 py-2.5 bg-white border border-slate-200 rounded-xl w-64 focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium shadow-sm"
+              className="pl-12 pr-6 py-2.5 bg-white border border-slate-200 rounded-xl w-48 focus:ring-2 focus:ring-brand-500 outline-none text-xs font-bold shadow-sm"
             />
           </div>
         </div>
@@ -173,10 +237,11 @@ const CandidateView: React.FC = () => {
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Identity Node</th>
+                <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">CANDIDATE</th>
                 <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Alignment Vector</th>
+                <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">RECRUITER</th>
                 <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 tracking-widest">Market Status</th>
-                <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 text-right tracking-widest">Management</th>
+                <th className="px-10 py-4 font-black text-[10px] uppercase text-slate-400 text-right tracking-widest">ACTIONS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -196,23 +261,46 @@ const CandidateView: React.FC = () => {
                      <p className="text-[9px] text-brand-600 font-black uppercase tracking-widest mt-1">Score: {c.matchScore}% Resonance</p>
                   </td>
                   <td className="px-10 py-5">
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${c.isOpenToWork ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-glow' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-                        {c.isOpenToWork ? 'Market Active' : 'Passive'}
+                    <div className="flex items-center gap-3">
+                        <img src={getRecruiterAvatar(c.assignedRecruiter) || `https://picsum.photos/40/40?u=${c.id}`} className="w-6 h-6 rounded-lg border border-slate-200 object-cover" />
+                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{c.assignedRecruiter || 'Unassigned'}</span>
+                    </div>
+                  </td>
+                  <td className="px-10 py-5">
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${
+                        (c.status === 'Hired' || c.status === 'Placed') ? 'bg-emerald-100 text-emerald-700 border-emerald-200 shadow-glow' :
+                        c.isOpenToWork ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-glow' : 
+                        'bg-slate-50 text-slate-400 border-slate-200'
+                    }`}>
+                        {(c.status === 'Hired' || c.status === 'Placed') ? <><Trophy size={10}/> HIRED</> : c.isOpenToWork ? 'Market Active' : 'Passive'}
                     </div>
                   </td>
                   <td className="px-10 py-5 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={(e) => handleEmail(c, e)} className="p-2 text-slate-400 hover:text-brand-600 transition-all"><Mail size={16} /></button>
                       <button className="p-2 text-slate-400 hover:text-purple-600 transition-all"><Zap size={16} /></button>
+                      {isOwner && (
+                        <button onClick={(e) => handleDeleteCandidate(c, e)} className="p-2 text-slate-400 hover:text-red-600 transition-all">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {filteredCandidates.length === 0 && (
+            <div className="py-20 text-center">
+                <AlertCircle size={48} className="text-slate-100 mx-auto mb-4" />
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">No matching nodes</h3>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2">Zero candidates detected in the {timeRange} window with the current filter.</p>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* INTELLIGENCE DRAWER */}
       {activeCandidate && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-md z-[100] flex justify-end animate-in fade-in duration-300">
           <div className="absolute inset-0" onClick={() => setSelectedCandidateId(null)}></div>
@@ -246,7 +334,20 @@ const CandidateView: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-10 space-y-10 no-scrollbar">
               {activeSubTab === 'info' && (
                 <div className="space-y-10">
-                  {/* RECRUITER VIEW: ENHANCED MARKET ALIGNMENT */}
+                  {/* RECRUITER INFO NODE */}
+                  <div className="bg-white border border-slate-100 p-6 rounded-[2rem] shadow-sm flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <img src={getRecruiterAvatar(activeCandidate.assignedRecruiter) || `https://picsum.photos/40/40?u=${activeCandidate.id}`} className="w-10 h-10 rounded-xl object-cover border border-slate-200" />
+                            <div>
+                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Managing Recruiter</p>
+                                <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{activeCandidate.assignedRecruiter || 'Unassigned'}</p>
+                            </div>
+                        </div>
+                        <button className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
+                            <Mail size={16} />
+                        </button>
+                  </div>
+
                   <div className="bg-slate-950 p-10 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-48 h-48 bg-brand-600 rounded-full blur-[100px] opacity-10 -mr-24 -mt-24 transition-opacity group-hover:opacity-20"></div>
                         <div className="relative z-10 flex items-center justify-between mb-10">
@@ -308,8 +409,8 @@ const CandidateView: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-2 gap-8">
-                     <ProfileStatCard icon={<Award size={20}/>} label="Market Seniority" value={activeCandidate.yearsOfExperience || '0'} sub="Years Protocol" />
-                     <ProfileStatCard icon={<Globe size={20}/>} label="Node Location" value={activeCandidate.preferredLocations?.[0] || 'Global Remote'} sub="Geographic Affinity" />
+                     <ProfileStatCard icon={<Award size={20}/>} label="Market Seniority" value={activeCandidate.skills?.[0]?.years || '0'} sub="Years Protocol" />
+                     <ProfileStatCard icon={<Globe size={20}/>} label="Node Location" value="Global Remote" sub="Geographic Affinity" />
                   </div>
                 </div>
               )}
@@ -317,7 +418,7 @@ const CandidateView: React.FC = () => {
               {activeSubTab === 'matches' && (
                 <div className="space-y-6 pb-20">
                     <div className="flex items-center justify-between px-2">
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">AI Market Predications</h4>
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">AI Market Predictions</h4>
                         <span className="text-[9px] font-black text-brand-600 uppercase tracking-widest">{recommendedJobs.length} Compatible Nodes</span>
                     </div>
                     {recommendedJobs.map(job => (
@@ -340,7 +441,11 @@ const CandidateView: React.FC = () => {
                 </div>
               )}
 
-              {activeSubTab === 'timeline' && <ActivityTimeline activities={activities.filter(a => a.entityId === activeCandidate.id)} />}
+              {activeSubTab === 'timeline' && (
+                <div className="animate-in fade-in duration-500">
+                    <ActivityTimeline activities={activities.filter(a => a.entityId === activeCandidate.id)} />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -349,8 +454,15 @@ const CandidateView: React.FC = () => {
   );
 };
 
-const FilterButton = ({ active, onClick, label }: any) => (
-  <button onClick={onClick} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>{label}</button>
+const FilterButton = ({ active, onClick, label, icon }: any) => (
+  <button 
+    onClick={onClick} 
+    className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+        active ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+    }`}
+  >
+      {icon}{label}
+  </button>
 );
 
 const SubTabButton = ({ active, onClick, label }: any) => (

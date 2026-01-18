@@ -33,7 +33,9 @@ import {
   History,
   CalendarDays,
   MessageSquareQuote,
-  Activity as ActivityIcon
+  Activity as ActivityIcon,
+  ZapIcon,
+  Award
 } from 'lucide-react';
 import { ExternalJob, Candidate } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -67,7 +69,7 @@ const JobAggregator: React.FC = () => {
     type: [],
     workMode: [],
     experience: [],
-    salaryMin: '',
+    salaryMin: 'All',
     postedDate: 'All',
     visaSponsorship: 'All'
   });
@@ -83,20 +85,38 @@ const JobAggregator: React.FC = () => {
       
       const filtered = results.filter(job => {
           if (filters.type.length > 0 && !filters.type.includes(job.type)) return false;
-          if (filters.workMode.length > 0 && !filters.workMode.some(m => job.location.toLowerCase().includes(m.toLowerCase()) || (m === 'Remote' && job.location.toLowerCase() === 'remote'))) return false;
-          if (filters.salaryMin) {
+          
+          if (filters.workMode.length > 0) {
+              const jobLoc = job.location.toLowerCase();
+              const matchesMode = filters.workMode.some(m => 
+                  jobLoc.includes(m.toLowerCase()) || (m === 'Remote' && jobLoc === 'remote')
+              );
+              if (!matchesMode) return false;
+          }
+
+          if (filters.salaryMin !== 'All') {
               const minVal = parseInt(filters.salaryMin.replace('k', '')) * 1000;
-              const jobSalary = job.salary ? parseInt(job.salary.replace(/[^0-9]/g, '')) : 0;
+              const jobSalaryRaw = job.salary ? job.salary.replace(/[^0-9]/g, '') : '0';
+              const jobSalary = parseInt(jobSalaryRaw) || 0;
               if (jobSalary < minVal) return false;
           }
+
           if (filters.postedDate !== 'All') {
               if (filters.postedDate === '24h' && !job.postedAt.includes('h')) return false;
               if (filters.postedDate === '7d' && job.postedAt.includes('m')) return false; 
           }
+
           if (filters.visaSponsorship !== 'All') {
               const offers = filters.visaSponsorship === 'Offers';
               if (job.visaSponsorship !== offers) return false;
           }
+
+          if (filters.experience.length > 0) {
+              const title = job.title.toLowerCase();
+              const matchesExp = filters.experience.some(e => title.includes(e.toLowerCase()));
+              if (!matchesExp) return false;
+          }
+
           return true;
       });
 
@@ -110,9 +130,9 @@ const JobAggregator: React.FC = () => {
 
   const toggleFilter = (category: keyof AdvancedFilters, value: string) => {
     setFilters(prev => {
-        if (category === 'postedDate') return { ...prev, postedDate: value };
-        if (category === 'salaryMin') return { ...prev, salaryMin: value };
-        if (category === 'visaSponsorship') return { ...prev, visaSponsorship: value };
+        if (category === 'postedDate' || category === 'salaryMin' || category === 'visaSponsorship') {
+            return { ...prev, [category]: value };
+        }
 
         const current = prev[category] as string[];
         const updated = current.includes(value) 
@@ -127,7 +147,7 @@ const JobAggregator: React.FC = () => {
         type: [],
         workMode: [],
         experience: [],
-        salaryMin: '',
+        salaryMin: 'All',
         postedDate: 'All',
         visaSponsorship: 'All'
     });
@@ -205,7 +225,7 @@ const JobAggregator: React.FC = () => {
     setActiveJobDetail(null);
   };
 
-  const hasActiveFilters = filters.type.length > 0 || filters.workMode.length > 0 || filters.experience.length > 0 || filters.salaryMin !== '' || filters.postedDate !== 'All' || filters.visaSponsorship !== 'All';
+  const hasActiveFilters = filters.type.length > 0 || filters.workMode.length > 0 || filters.experience.length > 0 || filters.salaryMin !== 'All' || filters.postedDate !== 'All' || filters.visaSponsorship !== 'All';
 
   // Helper to determine if the footer container should be rendered
   const shouldShowFooter = (drawerTab === 'details') || (drawerTab === 'matches' && selectedCandidateIds.length > 0);
@@ -241,16 +261,18 @@ const JobAggregator: React.FC = () => {
             <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={20} />
             <input type="text" placeholder="Global Region..." className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[2rem] focus:ring-2 focus:ring-brand-500 outline-none font-bold text-sm shadow-inner transition-all" value={locationQuery} onChange={(e) => setLocationQuery(e.target.value)} />
           </div>
-          <button onClick={handleSearch} className="bg-slate-900 text-white px-12 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3">
+          <button onClick={() => setShowAdvanced(false)} className="bg-slate-900 text-white px-12 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3">
             {isLoadingJobs ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />} Search
           </button>
         </div>
 
         {showAdvanced && (
             <div className="mt-8 pt-8 border-t border-slate-100 animate-in slide-in-from-top-4 duration-500">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-12 gap-y-10">
                     <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Work Protocol</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <ZapIcon size={12} className="text-brand-500" /> Work Protocol
+                        </label>
                         <div className="flex flex-wrap gap-2">
                             {['Full-time', 'Contract', 'Freelance'].map(t => (
                                 <TagButton key={t} active={filters.type.includes(t)} onClick={() => toggleFilter('type', t)} label={t} />
@@ -258,7 +280,9 @@ const JobAggregator: React.FC = () => {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Environment</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <Globe size={12} className="text-brand-500" /> Environment
+                        </label>
                         <div className="flex flex-wrap gap-2">
                             {['Remote', 'Hybrid', 'On-site'].map(m => (
                                 <TagButton key={m} active={filters.workMode.includes(m)} onClick={() => toggleFilter('workMode', m)} label={m} />
@@ -266,10 +290,42 @@ const JobAggregator: React.FC = () => {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Visa Protocol</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <DollarSign size={12} className="text-brand-500" /> Salary Node
+                        </label>
                         <div className="flex flex-wrap gap-2">
-                            {[{ label: 'Offers Sponsorship', value: 'Offers' }, { label: 'All', value: 'All' }].map(v => (
+                            {['All', '100k', '120k', '150k', '200k'].map(s => (
+                                <TagButton key={s} active={filters.salaryMin === s} onClick={() => toggleFilter('salaryMin', s)} label={s === 'All' ? 'All ranges' : `${s}+`} />
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <Clock size={12} className="text-brand-500" /> Fresh Posting
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            {['All', '24h', '7d'].map(p => (
+                                <TagButton key={p} active={filters.postedDate === p} onClick={() => toggleFilter('postedDate', p)} label={p === 'All' ? 'Any time' : `< ${p}`} />
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <ShieldCheck size={12} className="text-emerald-500" /> Visa Protocol
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            {[{ label: 'Sponsorship Only', value: 'Offers' }, { label: 'All Protocols', value: 'All' }].map(v => (
                                 <TagButton key={v.value} active={filters.visaSponsorship === v.value} onClick={() => toggleFilter('visaSponsorship', v.value)} label={v.label} />
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <Award size={12} className="text-purple-500" /> Experience
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            {['Junior', 'Mid', 'Senior', 'Staff'].map(e => (
+                                <TagButton key={e} active={filters.experience.includes(e)} onClick={() => toggleFilter('experience', e)} label={e} />
                             ))}
                         </div>
                     </div>
@@ -318,6 +374,7 @@ const JobAggregator: React.FC = () => {
           <div className="py-32 text-center bg-white rounded-[3rem] border border-slate-200 border-dashed">
              <Search size={56} className="text-slate-100 mx-auto mb-6" />
              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">No opportunities detected</h3>
+             <p className="text-slate-400 mt-2 font-medium italic">Adjust your search parameters or advanced settings.</p>
           </div>
         )}
       </div>
@@ -485,7 +542,7 @@ const JobAggregator: React.FC = () => {
                                         <div className="relative shrink-0">
                                             <img src={applicant.avatarUrl} className="w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-white" />
                                             <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center ${
-                                                applicant.appStatus === 'Hired' ? 'bg-emerald-500 border-white text-white' : 'bg-slate-900 border-white text-white'
+                                                applicant.appStatus === 'Hired' ? 'bg-emerald-50 border-white text-white' : 'bg-slate-900 border-white text-white'
                                             }`}>
                                                 <ActivityIcon size={12} />
                                             </div>

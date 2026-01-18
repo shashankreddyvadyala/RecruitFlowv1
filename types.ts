@@ -73,6 +73,7 @@ export interface Candidate {
   applicationHistory?: ApplicationHistory[];
   likedJobIds?: string[];
   rejectedJobIds?: string[];
+  assignedRecruiter?: string; // Field for recruiter name
 }
 
 export interface ExternalJob {
@@ -86,7 +87,7 @@ export interface ExternalJob {
   salary?: string;
   matchScore?: number;
   url?: string;
-  visaSponsorship?: boolean; // New property
+  visaSponsorship?: boolean;
 }
 
 export interface Activity {

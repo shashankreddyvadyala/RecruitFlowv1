@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, Briefcase, Bot, Settings, Search, Gem, Building, UsersRound, Calendar } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, Bot, Settings, Search, Gem, Building, UsersRound, Calendar, Send, Zap } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { UserRole } from '../types';
 
@@ -10,7 +10,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
-  const { userRole, branding, interviews } = useStore();
+  const { userRole, branding, interviews, activities, candidates } = useStore();
   const isOwner = userRole === UserRole.Owner;
 
   const upcomingInterviews = interviews.filter(i => {
@@ -18,11 +18,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
     return i.status === 'Scheduled' && diff > 0 && diff < 3600000;
   }).length;
 
+  const totalSubmissions = activities.filter(a => a.type === 'JobShared' || a.type === 'Email').length;
+  const totalMovements = candidates.reduce((acc, c) => acc + (c.applicationHistory?.length || 0), 0);
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     ...(isOwner ? [{ id: 'agency-os', label: 'Performance', icon: <Building size={20} /> }] : []),
     ...(isOwner ? [{ id: 'team', label: 'My Team', icon: <UsersRound size={20} /> }] : []),
-    { id: 'calendar', label: 'Calendar', icon: <Calendar size={20} />, badge: upcomingInterviews },
+    { id: 'transmission', label: 'Submission', icon: <Send size={20} />, badge: (totalSubmissions + totalMovements) > 0 ? (totalSubmissions + totalMovements) : undefined },
+    { id: 'calendar', label: 'Calendar', icon: <Calendar size={20} />, badge: upcomingInterviews > 0 ? upcomingInterviews : undefined },
     { id: 'job-search', label: 'Find Jobs', icon: <Search size={20} /> },
     { id: 'talent-market', label: 'Match Talent', icon: <Gem size={20} /> },
     { id: 'jobs', label: 'Job Orders', icon: <Briefcase size={20} /> },
@@ -48,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto mt-4">
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto mt-4 no-scrollbar">
         <div className="px-4 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-2">Main Menu</div>
         {menuItems.map((item) => (
           <button
@@ -67,7 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
                 <span className="font-bold text-xs">{item.label}</span>
             </div>
             {item.badge ? (
-                <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                <span className={`${item.id === 'transmission' ? 'bg-brand-500/50 text-white' : 'bg-red-500 text-white'} text-[9px] font-black px-1.5 py-0.5 rounded-lg`}>
                     {item.badge}
                 </span>
             ) : null}

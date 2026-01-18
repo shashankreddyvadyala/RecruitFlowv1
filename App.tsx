@@ -18,6 +18,7 @@ import ProfileSetupPage from './components/ProfileSetupPage';
 import AgencyActivityLog from './components/AgencyActivityLog';
 import InterviewCalendar from './components/InterviewCalendar';
 import NotificationSystem from './components/NotificationSystem';
+import TransmissionCenter from './components/TransmissionCenter';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { UserRole, Activity } from './types';
 import { Bell, UserCircle2, ChevronDown, BellRing, Clock, ArrowRight, Zap, User, FileText, CheckCircle2, Briefcase } from 'lucide-react';
@@ -25,6 +26,8 @@ import { Bell, UserCircle2, ChevronDown, BellRing, Clock, ArrowRight, Zap, User,
 function MainApp({ onLogout }: { onLogout: () => void }) {
   const { userRole, setUserRole, branding, interviews, notify, activities } = useStore();
   const [currentView, setCurrentView] = useState('dashboard');
+  const [transmissionTab, setTransmissionTab] = useState<'submissions' | 'pipeline'>('submissions');
+  const [candidateFilter, setCandidateFilter] = useState<'all' | 'openToWork' | 'passive' | 'hired'>('all');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileComplete, setIsProfileComplete] = useState(false);
@@ -75,7 +78,17 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <DashboardStats onViewCalendar={() => setCurrentView('calendar')} />;
+        return (
+          <DashboardStats 
+            onViewCalendar={() => setCurrentView('calendar')} 
+            onViewCandidates={() => { setCurrentView('candidates'); setCandidateFilter('all'); }}
+            onViewHiredCandidates={() => { setCurrentView('candidates'); setCandidateFilter('hired'); }}
+            onViewSubmissions={() => { setCurrentView('transmission'); setTransmissionTab('submissions'); }}
+            onViewPipeline={() => { setCurrentView('transmission'); setTransmissionTab('pipeline'); }}
+          />
+        );
+      case 'transmission':
+        return <TransmissionCenter initialTab={transmissionTab} />;
       case 'agency-os':
         return <AgencyDashboard />;
       case 'team':
@@ -91,7 +104,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
       case 'talent-market':
         return <TalentMatch />;
       case 'candidates':
-        return <CandidateView />;
+        return <CandidateView initialFilter={candidateFilter} />;
       case 'settings':
         return <SettingsPage />;
       case 'ai-agents':
@@ -110,7 +123,15 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
           </div>
         );
       default:
-        return <DashboardStats onViewCalendar={() => setCurrentView('calendar')} />;
+        return (
+          <DashboardStats 
+            onViewCalendar={() => setCurrentView('calendar')} 
+            onViewCandidates={() => { setCurrentView('candidates'); setCandidateFilter('all'); }}
+            onViewHiredCandidates={() => { setCurrentView('candidates'); setCandidateFilter('hired'); }}
+            onViewSubmissions={() => { setCurrentView('transmission'); setTransmissionTab('submissions'); }}
+            onViewPipeline={() => { setCurrentView('transmission'); setTransmissionTab('pipeline'); }}
+          />
+        );
     }
   };
 
@@ -121,7 +142,14 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
-      <Sidebar currentView={currentView} onChangeView={setCurrentView} />
+      <Sidebar 
+        currentView={currentView} 
+        onChangeView={(view) => { 
+          setCurrentView(view); 
+          if(view === 'transmission') setTransmissionTab('submissions'); 
+          if(view === 'candidates') setCandidateFilter('all');
+        }} 
+      />
       
       <main className="flex-1 overflow-x-hidden overflow-y-auto relative">
         <NotificationSystem />
@@ -129,7 +157,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-8 sticky top-0 z-40 backdrop-blur-md bg-white/90">
           <div className="flex items-center gap-8 flex-1">
             <h2 className="text-lg font-black text-slate-900 capitalize hidden lg:block tracking-tighter uppercase">
-              {currentView.replace('-', ' ')}
+              {currentView === 'transmission' ? 'Submission Center' : currentView.replace('-', ' ')}
             </h2>
             <UnifiedSearch />
           </div>

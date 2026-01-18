@@ -24,8 +24,13 @@ const BASE_CHART_VALUES = [
   { inflow: 30, submissions: 35 },
 ];
 
-const StatCard = ({ title, value, sub, icon, color, description, trend }: any) => (
-  <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between group hover:shadow-md transition-all">
+const StatCard = ({ title, value, sub, icon, color, description, trend, onClick }: any) => (
+  <div 
+    onClick={onClick}
+    className={`bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between group transition-all ${
+      onClick ? 'cursor-pointer hover:shadow-md hover:border-brand-500 active:scale-[0.98]' : 'hover:shadow-md'
+    }`}
+  >
     <div className="flex items-start justify-between mb-6">
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -39,7 +44,7 @@ const StatCard = ({ title, value, sub, icon, color, description, trend }: any) =
         </div>
         <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none uppercase">{value}</h3>
       </div>
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${color} text-white shadow-sm`}>
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${color} text-white shadow-sm transition-transform group-hover:scale-110`}>
         {icon}
       </div>
     </div>
@@ -54,9 +59,19 @@ const StatCard = ({ title, value, sub, icon, color, description, trend }: any) =
 
 interface DashboardStatsProps {
   onViewCalendar?: () => void;
+  onViewCandidates?: () => void;
+  onViewHiredCandidates?: () => void;
+  onViewSubmissions?: () => void;
+  onViewPipeline?: () => void;
 }
 
-const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
+const DashboardStats: React.FC<DashboardStatsProps> = ({ 
+  onViewCalendar, 
+  onViewCandidates, 
+  onViewHiredCandidates,
+  onViewSubmissions, 
+  onViewPipeline 
+}) => {
   const { interviews, recruiterStats, candidates } = useStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
 
@@ -141,7 +156,8 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           trend="neutral"
           icon={<Users size={24} />} 
           color="bg-brand-600" 
-          description="Total candidates currently registered in the agency talent cloud."
+          description="Total candidates currently registered in the agency talent cloud. Click to manage."
+          onClick={onViewCandidates}
         />
         <StatCard 
           title="Total Submissions" 
@@ -150,7 +166,8 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           trend="up"
           icon={<Send size={24} />} 
           color="bg-slate-900" 
-          description="Total job applications submitted (Score weight: 2pt)."
+          description="Total job applications submitted (Score weight: 2pt). Click to view ledger."
+          onClick={onViewSubmissions}
         />
         <StatCard 
           title="Pipeline Movements" 
@@ -159,7 +176,8 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           trend="neutral"
           icon={<Zap size={24} />} 
           color="bg-purple-600" 
-          description="Successful stage progressions (Score weight: 10pt)."
+          description="Successful stage progressions (Score weight: 10pt). Click to view pipeline."
+          onClick={onViewPipeline}
         />
         <StatCard 
           title="Confirmed Hires" 
@@ -168,7 +186,8 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
           trend="up"
           icon={<Trophy size={24} />} 
           color="bg-emerald-600" 
-          description="Total successful candidate placements (Score weight: 50pt)."
+          description="Total successful candidate placements. Click to view hired talent pool."
+          onClick={onViewHiredCandidates}
         />
       </div>
 
@@ -250,7 +269,7 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
                 <div key={int.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer" onClick={onViewCalendar}>
                     <div className="flex justify-between items-start mb-1">
                         <span className="text-[10px] font-black text-brand-600 uppercase tracking-tighter">
-                            {new Date(int.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatTime(int.startTime)}
                         </span>
                     </div>
                     <h4 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{int.candidateName}</h4>
@@ -269,6 +288,11 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({ onViewCalendar }) => {
       </div>
     </div>
   );
+};
+
+// Internal Helper for Time Formatting
+const formatTime = (iso: string) => {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 export default DashboardStats;

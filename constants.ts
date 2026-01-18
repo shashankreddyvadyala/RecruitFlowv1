@@ -1,7 +1,6 @@
 
 import { Candidate, Job, StageType, ExternalJob, CandidateProfile, Activity, Placement, RecruiterStats, AgencyBranding, Interview } from "./types";
 
-// Fixed: Corrected MOCK_PIPELINE using new StageType members
 export const MOCK_PIPELINE = [
   { id: 's1', name: 'Sourced', type: StageType.Sourcing, order: 0 },
   { id: 's2', name: 'AI Outreach', type: StageType.EmailSequence, order: 1 },
@@ -84,7 +83,6 @@ export const MOCK_INTERVIEWS: Interview[] = [
   }
 ];
 
-// Fixed: Added missing 'url' property to match revised ExternalJob interface
 export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
   {
     id: 'ej1',
@@ -148,7 +146,6 @@ export const MOCK_EXTERNAL_JOBS: ExternalJob[] = [
   }
 ];
 
-// Fixed: Added missing 'applicationHistory' to match revised Candidate interface
 export const MOCK_CANDIDATES: Candidate[] = [
   {
     id: 'c1',
@@ -168,13 +165,14 @@ export const MOCK_CANDIDATES: Candidate[] = [
     avatarUrl: 'https://picsum.photos/100/100?random=1',
     isOpenToWork: true,
     sharedJobIds: ['ej1', 'ej2'],
+    assignedRecruiter: 'Alex Morgan',
     applicationHistory: [
       {
         id: 'hist_1',
         jobTitle: 'Lead Frontend Architect',
         company: 'Stripe',
         status: 'In Progress',
-        appliedDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 4 days ago
+        appliedDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         notes: 'Technical assessment passed. Moving to hiring manager review.'
       },
       {
@@ -182,8 +180,8 @@ export const MOCK_CANDIDATES: Candidate[] = [
         jobTitle: 'Senior Systems Engineer',
         company: 'Vercel',
         status: 'Hired',
-        appliedDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 45 days ago
-        outcomeDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 days ago
+        appliedDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        outcomeDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         notes: 'REASON: Candidate demonstrated exceptional proficiency in distributed systems and high-scale edge deployment.'
       }
     ]

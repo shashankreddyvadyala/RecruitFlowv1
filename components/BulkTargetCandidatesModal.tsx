@@ -155,7 +155,7 @@ const BulkTargetCandidatesModal: React.FC<BulkTargetCandidatesModalProps> = ({ s
 
                     <section>
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
-                            <ShieldCheck size={16} className="text-emerald-500" /> Transmission Protocol
+                            <ShieldCheck size={16} className="text-emerald-500" /> Submission Protocol
                         </h4>
                         <div className="bg-slate-900 rounded-[2rem] p-8 text-white space-y-6 shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-10"></div>
@@ -183,7 +183,7 @@ const BulkTargetCandidatesModal: React.FC<BulkTargetCandidatesModalProps> = ({ s
                     <div className="bg-brand-50 p-6 rounded-2xl border border-brand-100 flex gap-4">
                         <Sparkles className="text-brand-600 shrink-0" size={24} />
                         <p className="text-[11px] font-bold text-brand-700 leading-relaxed uppercase tracking-wide">
-                            Executing this protocol will sync the selected mission payload across all target candidate portals and initiate automated outreach sequences.
+                            Executing this protocol will sync the selected mission payload across all target candidate portals and initiate automated submission sequences.
                         </p>
                     </div>
                 </div>
@@ -203,12 +203,12 @@ const BulkTargetCandidatesModal: React.FC<BulkTargetCandidatesModalProps> = ({ s
                         {isTransmitting ? (
                             <>
                                 <Loader2 size={18} className="animate-spin" />
-                                Synchronizing Neural Nodes...
+                                Synchronizing Submission Nodes...
                             </>
                         ) : (
                             <>
                                 <Send size={18} />
-                                Initiate Bulk Transmission
+                                Initiate Bulk Submission
                             </>
                         )}
                     </button>
