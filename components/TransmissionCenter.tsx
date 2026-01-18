@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { Activity, Candidate, ApplicationHistory, ExternalJob } from '../types';
+import ActivityTimeline from './ActivityTimeline';
 import { 
   Send, 
   Zap, 
@@ -26,8 +27,12 @@ import {
   Layout,
   Users,
   ArrowRight,
-  // Fix: Added missing CheckCircle2 import
-  CheckCircle2
+  CheckCircle2,
+  Award,
+  Star,
+  Mail,
+  ShieldAlert,
+  Scale
 } from 'lucide-react';
 
 type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
@@ -57,8 +62,9 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Drawer State
+  // Drawer States
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedCandidateTimelineId, setSelectedCandidateTimelineId] = useState<string | null>(null);
 
   // Sync tab if prop changes
   useEffect(() => {
@@ -66,7 +72,6 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
   }, [initialTab]);
 
   // --- DATA PROCESSING: SUBMISSIONS ---
-  // We derive submission nodes by mapping candidates to their sharedJobIds
   const resolvedSubmissions = useMemo(() => {
     const nodes: SubmissionNode[] = [];
     
@@ -75,7 +80,6 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
             cand.sharedJobIds.forEach(jobId => {
                 const job = externalJobs.find(j => j.id === jobId);
                 if (job) {
-                    // Try to find the specific activity for attribution, otherwise fallback to assigned recruiter
                     const sharedActivity = activities.find(a => a.entityId === cand.id && a.type === 'JobShared');
                     nodes.push({
                         id: `${cand.id}-${job.id}`,
@@ -164,6 +168,8 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
   };
 
   const activeJob = useMemo(() => externalJobs.find(j => j.id === selectedJobId), [selectedJobId, externalJobs]);
+  const activeTimelineCandidate = useMemo(() => candidates.find(c => c.id === selectedCandidateTimelineId), [selectedCandidateTimelineId, candidates]);
+  const candidateActivities = useMemo(() => activities.filter(a => a.entityId === selectedCandidateTimelineId), [selectedCandidateTimelineId, activities]);
   
   // Find all talent applied to this job for the drawer
   const talentForActiveJob = useMemo(() => {
@@ -271,13 +277,13 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                   return (
                     <tr key={node.id} className="hover:bg-brand-50/20 transition-all group">
                       <td className="px-10 py-6">
-                        <div className="flex items-center gap-3">
+                        <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="flex items-center gap-3 text-left">
                           <img src={node.candidate.avatarUrl} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-sm" />
                           <div>
-                            <p className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none mb-1">{node.candidate.firstName} {node.candidate.lastName}</p>
+                            <p className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none mb-1 group-hover:text-brand-600 transition-colors">{node.candidate.firstName} {node.candidate.lastName}</p>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{node.candidate.role}</p>
                           </div>
-                        </div>
+                        </button>
                       </td>
                       <td className="px-10 py-6">
                         <button 
@@ -317,13 +323,13 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                 filteredMovements.map((node, idx) => (
                   <tr key={`${node.candidate.id}-${idx}`} className="hover:bg-purple-50/20 transition-all group">
                     <td className="px-10 py-6">
-                      <div className="flex items-center gap-3">
+                      <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="flex items-center gap-3 text-left">
                         <img src={node.candidate.avatarUrl} className="w-10 h-10 rounded-xl object-cover border-2 border-white shadow-md group-hover:scale-110 transition-transform" />
                         <div>
-                          <p className="font-black text-slate-900 uppercase tracking-tight text-sm leading-none mb-1">{node.candidate.firstName} {node.candidate.lastName}</p>
+                          <p className="font-black text-slate-900 uppercase tracking-tight text-sm leading-none mb-1 group-hover:text-purple-600 transition-colors">{node.candidate.firstName} {node.candidate.lastName}</p>
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{node.candidate.email}</p>
                         </div>
-                      </div>
+                      </button>
                     </td>
                     <td className="px-10 py-6">
                         <button 
@@ -361,7 +367,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                     </td>
                     <td className="px-10 py-6 text-right">
                       <p className="text-xs font-black text-slate-900 tracking-tight">{node.application.appliedDate}</p>
-                      <button className="text-[9px] font-black text-brand-600 uppercase tracking-widest hover:underline mt-1">View Timeline</button>
+                      <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="text-[9px] font-black text-brand-600 uppercase tracking-widest hover:underline mt-1">View Timeline</button>
                     </td>
                   </tr>
                 ))
@@ -379,7 +385,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
         </div>
       </div>
 
-      {/* INTELLIGENCE DRAWER */}
+      {/* JOB INTELLIGENCE DRAWER */}
       {activeJob && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-md z-[100] flex justify-end animate-in fade-in duration-300">
           <div className="absolute inset-0" onClick={() => setSelectedJobId(null)}></div>
@@ -404,7 +410,6 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
             </div>
 
             <div className="flex-1 overflow-y-auto p-10 space-y-12 no-scrollbar">
-              {/* MISSION BRIEF */}
               <section>
                   <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
                       <FileText size={18} className="text-brand-600" /> Mission Brief
@@ -417,7 +422,6 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                   </div>
               </section>
 
-              {/* COLLECTIVE SUBMISSIONS */}
               <section>
                   <div className="flex items-center justify-between mb-8">
                     <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
@@ -430,7 +434,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
 
                   <div className="space-y-4">
                       {talentForActiveJob.length > 0 ? talentForActiveJob.map(({ candidate, status, date }) => (
-                          <div key={candidate.id} className="bg-slate-50 border border-slate-100 p-6 rounded-[2.5rem] flex items-center justify-between group hover:bg-white hover:shadow-xl hover:border-brand-100 transition-all cursor-pointer">
+                          <div key={candidate.id} onClick={() => { setSelectedJobId(null); setSelectedCandidateTimelineId(candidate.id); }} className="bg-slate-50 border border-slate-100 p-6 rounded-[2.5rem] flex items-center justify-between group hover:bg-white hover:shadow-xl hover:border-brand-100 transition-all cursor-pointer">
                               <div className="flex items-center gap-6">
                                   <img src={candidate.avatarUrl} className="w-12 h-12 rounded-2xl object-cover shadow-md border-2 border-white" />
                                   <div>
@@ -464,7 +468,6 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                   </div>
               </section>
 
-              {/* AI REASONING BRIEF */}
               <section className="bg-slate-900 p-8 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-20 -mr-16 -mt-16"></div>
                   <div className="relative z-10">
@@ -481,6 +484,75 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
             <div className="p-8 border-t border-slate-100 bg-white flex gap-4">
                 <button className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl hover:bg-brand-600 active:scale-95 transition-all flex items-center justify-center gap-3">
                     View Complete Job Listing <ArrowRight size={16} />
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CANDIDATE INFO & TIMELINE DRAWER */}
+      {activeTimelineCandidate && (
+        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-md z-[100] flex justify-end animate-in fade-in duration-300">
+          <div className="absolute inset-0" onClick={() => setSelectedCandidateTimelineId(null)}></div>
+          <div className="relative bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 overflow-hidden">
+            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-start">
+              <div className="flex gap-4 items-center">
+                <div className="relative">
+                    <img src={activeTimelineCandidate.avatarUrl} className="w-16 h-16 rounded-[1.5rem] object-cover border-4 border-white shadow-2xl" />
+                    {activeTimelineCandidate.isOpenToWork && <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center border-2 border-white"><Star size={10} className="fill-white text-white"/></div>}
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-2">{activeTimelineCandidate.firstName} {activeTimelineCandidate.lastName}</h2>
+                  <div className="flex items-center gap-3">
+                      <span className="text-[9px] font-black bg-brand-600 text-white px-2 py-0.5 rounded uppercase tracking-widest">{activeTimelineCandidate.matchScore}% Resonance</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activeTimelineCandidate.role}</span>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setSelectedCandidateTimelineId(null)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-2xl transition-all shadow-sm">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-10 space-y-12 no-scrollbar">
+              {/* ALIGNMENT DATA */}
+              <section>
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
+                      <Target size={18} className="text-brand-600" /> Market Alignment Node
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                      <DrawerInfoCard icon={<DollarSign size={16}/>} label="Comp Expectation" value={activeTimelineCandidate.salaryExpectation || '$150k+ Floor'} />
+                      <DrawerInfoCard icon={<Globe size={16}/>} label="Work Mode" value={activeTimelineCandidate.workMode || 'Remote Preferred'} />
+                      <DrawerInfoCard icon={<Award size={16}/>} label="Market Seniority" value={`${activeTimelineCandidate.skills?.[0]?.years || 5}+ Years`} />
+                      <DrawerInfoCard icon={<ShieldCheck size={16}/>} label="Work Auth" value={activeTimelineCandidate.workAuthorization || 'Authorized'} />
+                  </div>
+              </section>
+
+              {/* TIMELINE */}
+              <section>
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
+                      <History size={18} className="text-brand-600" /> Operational Sync History
+                  </h4>
+                  <ActivityTimeline activities={candidateActivities} />
+              </section>
+
+              {/* AI SUMMARY BRIEF */}
+              <section className="bg-slate-900 p-8 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-20 -mr-16 -mt-16"></div>
+                  <div className="relative z-10">
+                      <h4 className="text-brand-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
+                          <Zap size={14} /> AI Resonance Synthesis
+                      </h4>
+                      <p className="text-sm text-slate-300 leading-relaxed italic">
+                          "Candidate shows high affinity for distributed architectural nodes. Recent {candidateActivities.length} sync events indicate strong engagement with current mission payload."
+                      </p>
+                  </div>
+              </section>
+            </div>
+
+            <div className="p-8 border-t border-slate-100 bg-white flex gap-4">
+                <button className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl hover:bg-brand-600 active:scale-95 transition-all flex items-center justify-center gap-3">
+                    View Full Intelligence Profile <ArrowRight size={16} />
                 </button>
             </div>
           </div>
