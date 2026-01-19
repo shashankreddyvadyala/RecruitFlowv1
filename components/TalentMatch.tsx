@@ -80,6 +80,11 @@ const TalentMatch: React.FC = () => {
     skills: [] as Skill[]
   });
 
+  // State for adding a new skill
+  const [isAddingSkill, setIsAddingSkill] = useState(false);
+  const [newSkillName, setNewSkillName] = useState('');
+  const [newSkillYears, setNewSkillYears] = useState<number>(1);
+
   const [internalNotes, setInternalNotes] = useState('');
   const [settings, setSettings] = useState({
     minSalary: '',
@@ -103,6 +108,7 @@ const TalentMatch: React.FC = () => {
     if (selectedProfile) {
         setSelectedMatchIds([]);
         setInternalNotes('');
+        setIsAddingSkill(false);
         setProfileForm({
           name: selectedProfile.name || 'Unknown Candidate',
           title: selectedProfile.title || 'Professional Node',
@@ -233,6 +239,17 @@ const TalentMatch: React.FC = () => {
     } finally {
         setIsProcessing(false);
     }
+  };
+
+  const handleAddSkill = () => {
+    if (!newSkillName.trim()) return;
+    setProfileForm(prev => ({
+        ...prev,
+        skills: [...prev.skills, { name: newSkillName.trim(), years: newSkillYears }]
+    }));
+    setNewSkillName('');
+    setNewSkillYears(1);
+    setIsAddingSkill(false);
   };
 
   const removeSkill = (index: number) => {
@@ -376,9 +393,35 @@ const TalentMatch: React.FC = () => {
                                                     <button onClick={() => removeSkill(idx)} className="text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>
                                                 </span>
                                             ))}
-                                            <button className="px-2 py-1 border border-slate-200 border-dashed text-slate-400 text-[9px] font-black uppercase rounded-md hover:bg-slate-50">
-                                                <Plus size={10} className="inline mr-1" /> Add
-                                            </button>
+                                            
+                                            {isAddingSkill ? (
+                                                <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200 animate-in fade-in zoom-in-95">
+                                                    <input 
+                                                        autoFocus
+                                                        value={newSkillName}
+                                                        onChange={e => setNewSkillName(e.target.value)}
+                                                        placeholder="Skill"
+                                                        className="w-20 px-2 py-0.5 text-[9px] font-bold uppercase outline-none bg-white rounded border border-slate-100"
+                                                        onKeyDown={e => e.key === 'Enter' && handleAddSkill()}
+                                                    />
+                                                    <input 
+                                                        type="number"
+                                                        value={newSkillYears}
+                                                        onChange={e => setNewSkillYears(parseInt(e.target.value) || 0)}
+                                                        className="w-8 px-1 py-0.5 text-[9px] font-bold outline-none bg-white rounded border border-slate-100"
+                                                        onKeyDown={e => e.key === 'Enter' && handleAddSkill()}
+                                                    />
+                                                    <button onClick={handleAddSkill} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={10}/></button>
+                                                    <button onClick={() => setIsAddingSkill(false)} className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X size={10}/></button>
+                                                </div>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setIsAddingSkill(true)}
+                                                    className="px-2 py-1 border border-slate-200 border-dashed text-slate-400 text-[9px] font-black uppercase rounded-md hover:bg-slate-50"
+                                                >
+                                                    <Plus size={10} className="inline mr-1" /> Add
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
