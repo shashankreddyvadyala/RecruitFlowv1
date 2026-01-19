@@ -9,7 +9,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Send, Zap, Trophy, HelpCircle, Info, Calendar, ArrowUpRight, TrendingUp, Users } from 'lucide-react';
+import { Send, Zap, Trophy, HelpCircle, Calendar, ArrowUpRight, TrendingUp, Users, Clock, Video, ChevronRight } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
@@ -124,6 +124,21 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
     { label: '1Y', value: '1Y' }, 
     { label: 'ALL', value: 'ALL' },
   ];
+
+  // Date and Time Helper Functions
+  const getInterviewDateParts = (iso: string) => {
+    const date = new Date(iso);
+    return {
+      day: date.getDate(),
+      month: date.toLocaleString('default', { month: 'short' }),
+      year: date.getFullYear(),
+      full: `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}-${date.getFullYear()}`
+    };
+  };
+
+  const formatTime = (iso: string) => {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -256,43 +271,83 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
         <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Next Events</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Temporal Nodes</p>
               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Interviews</h3>
             </div>
             <div className="p-3 bg-brand-50 text-brand-600 rounded-xl">
-                <Calendar size={20} />
+                <Clock size={20} />
             </div>
           </div>
           
-          <div className="flex-1 space-y-4">
-            {interviews.slice(0, 3).map((int) => (
-                <div key={int.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer" onClick={onViewCalendar}>
-                    <div className="flex justify-between items-start mb-1">
-                        <span className="text-[10px] font-black text-brand-600 uppercase tracking-tighter">
-                            {formatTime(int.startTime)}
-                        </span>
-                    </div>
-                    <h4 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{int.candidateName}</h4>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase truncate tracking-widest">{int.jobTitle}</p>
+          <div className="flex-1 space-y-3">
+            {interviews.length > 0 ? (
+                interviews.slice(0, 4).map((int) => {
+                    const dateParts = getInterviewDateParts(int.startTime);
+                    return (
+                        <div 
+                            key={int.id} 
+                            className="group flex items-center gap-5 p-4 bg-slate-50 hover:bg-white rounded-3xl border border-slate-50 hover:border-brand-100 hover:shadow-xl hover:shadow-brand-500/5 transition-all cursor-pointer overflow-hidden relative" 
+                            onClick={onViewCalendar}
+                        >
+                            {/* Date Badge */}
+                            <div className="flex flex-col items-center justify-center w-12 h-14 bg-white rounded-2xl border border-slate-100 shadow-sm group-hover:bg-slate-900 group-hover:border-slate-900 transition-all shrink-0">
+                                <span className="text-[7px] font-black uppercase text-slate-400 group-hover:text-slate-500 tracking-widest mb-1 leading-none">
+                                    {dateParts.month}
+                                </span>
+                                <span className="text-lg font-black text-slate-900 group-hover:text-white leading-none">
+                                    {dateParts.day}
+                                </span>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    <span className="text-[10px] font-black text-brand-600 uppercase tracking-tighter">
+                                        {formatTime(int.startTime)}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] truncate">
+                                        {int.type || 'Selection Round'}
+                                    </span>
+                                </div>
+                                <h4 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">
+                                    {int.candidateName}
+                                </h4>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase truncate tracking-widest">
+                                    {int.jobTitle}
+                                </p>
+                            </div>
+
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+                                <ChevronRight size={14} className="text-brand-500" />
+                            </div>
+                            
+                            {/* Forensic Date Hover Label */}
+                            <div className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="text-[7px] font-black text-slate-300 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded-bl-lg">
+                                    {dateParts.full}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })
+            ) : (
+                <div className="p-12 text-center bg-slate-50 rounded-[2.5rem] border border-slate-100 border-dashed">
+                    <Calendar size={32} className="text-slate-200 mx-auto mb-3" />
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No nodes active</p>
                 </div>
-            ))}
+            )}
           </div>
           
           <button 
             onClick={onViewCalendar}
-            className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+            className="mt-8 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-brand-600 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-900/10 active:scale-[0.98]"
           >
-             View Full Calendar <ArrowUpRight size={14} />
+             Synchronize Calendar <ArrowUpRight size={14} />
           </button>
         </div>
       </div>
     </div>
   );
-};
-
-// Internal Helper for Time Formatting
-const formatTime = (iso: string) => {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 export default DashboardStats;
