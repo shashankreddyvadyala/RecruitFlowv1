@@ -5,36 +5,56 @@ import {
   Search, 
   MapPin, 
   Briefcase, 
-  Star, 
   Send, 
-  FileText, 
   Loader2, 
-  ChevronRight, 
   Check, 
-  Plus,
-  Sparkles,
-  UserPlus,
-  ArrowRight,
-  DollarSign,
-  Globe,
-  Zap,
-  Settings,
-  RefreshCw,
-  Trophy,
-  X,
-  ShieldAlert,
-  ShieldCheck,
-  GraduationCap,
-  Target,
-  Layers,
-  FileCheck,
-  ClipboardList,
-  Trash2,
-  User
+  Plus, 
+  Sparkles, 
+  UserPlus, 
+  ArrowRight, 
+  DollarSign, 
+  Globe, 
+  Zap, 
+  Settings, 
+  RefreshCw, 
+  Trophy, 
+  X, 
+  ShieldCheck, 
+  Target, 
+  FileCheck, 
+  Trash2, 
+  User, 
+  History 
 } from 'lucide-react';
 import { ExternalJob, CandidateProfile, Skill } from '../types';
 import { useStore } from '../context/StoreContext';
 import { ResumeParserService } from '../services/externalServices';
+
+// Compact Sub-components
+const TabLink = ({ active, onClick, label, icon, count }: any) => (
+    <button 
+        onClick={onClick}
+        className={`py-4 px-6 text-[10px] font-black uppercase tracking-[0.1em] flex items-center gap-2 relative transition-all ${active ? 'text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
+    >
+        {icon}
+        {label}
+        {count !== undefined && count > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black border transition-all ${active ? 'bg-brand-600 text-white border-brand-600 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                {count}
+            </span>
+        )}
+        {active && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-600" />}
+    </button>
+);
+
+const FilterBtn = ({ active, onClick, label, icon }: any) => (
+  <button 
+    onClick={onClick}
+    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${active ? 'bg-white text-slate-900 shadow-md border border-slate-100' : 'text-slate-400 hover:text-slate-600 border border-transparent'}`}
+  >
+      {icon}{label}
+  </button>
+);
 
 const TalentMatch: React.FC = () => {
   const { 
@@ -44,15 +64,13 @@ const TalentMatch: React.FC = () => {
     candidates, 
     notify, 
     bulkShareJobs,
-    addCandidate,
-    updateCandidateProfile
+    addCandidate
   } = useStore();
   
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'settings' | 'matches'>('settings');
   
-  // Local Form State for Editing Extracted Info
   const [profileForm, setProfileForm] = useState({
     name: '',
     title: '',
@@ -62,10 +80,10 @@ const TalentMatch: React.FC = () => {
     skills: [] as Skill[]
   });
 
-  // Local State for Matching Logic
   const [internalNotes, setInternalNotes] = useState('');
   const [settings, setSettings] = useState({
     minSalary: '',
+    location: '',
     workMode: 'Any',
     employmentType: 'Full-time',
     skillsFocus: '',
@@ -77,72 +95,66 @@ const TalentMatch: React.FC = () => {
   const [isBulkSharing, setIsBulkSharing] = useState(false);
   const [isRecalibrating, setIsRecalibrating] = useState(false);
 
-  const selectedProfile = talentProfiles.find(p => p.id === selectedProfileId) || null;
+  const selectedProfile = useMemo(() => 
+    talentProfiles.find(p => p.id === selectedProfileId) || null
+  , [selectedProfileId, talentProfiles]);
 
   useEffect(() => {
     if (selectedProfile) {
         setSelectedMatchIds([]);
         setInternalNotes('');
         setProfileForm({
-          name: selectedProfile.name,
-          title: selectedProfile.title,
-          bio: selectedProfile.bio,
-          location: selectedProfile.location,
-          experience: selectedProfile.experience,
-          skills: [...selectedProfile.skills]
+          name: selectedProfile.name || 'Unknown Candidate',
+          title: selectedProfile.title || 'Professional Node',
+          bio: selectedProfile.bio || '',
+          location: selectedProfile.location || 'Remote',
+          experience: selectedProfile.experience || 0,
+          skills: selectedProfile.skills ? [...selectedProfile.skills] : []
         });
         setSettings({
           minSalary: '',
+          location: selectedProfile.location || '',
           workMode: 'Any',
           employmentType: 'Full-time',
-          skillsFocus: selectedProfile.skills.slice(0, 3).map(s => s.name).join(', '),
+          skillsFocus: selectedProfile.skills ? selectedProfile.skills.slice(0, 3).map(s => s.name).join(', ') : '',
           visaStatus: 'Not Required'
         });
         setMatchFilter('all');
+        setActiveSubTab('settings');
     }
-  }, [selectedProfileId]);
+  }, [selectedProfileId, selectedProfile]);
 
   const handleUpdateMatches = async () => {
     setIsRecalibrating(true);
-    // Simulate re-indexing logic
     await new Promise(r => setTimeout(r, 600));
     setIsRecalibrating(false);
     setActiveSubTab('matches');
-    notify("System Calibrated", "Job matches synchronized with your corrections.", "success");
+    notify("Engine Synchronized", "Matches recalibrated.", "success");
   };
 
   const matchedJobs = useMemo(() => {
     if (!selectedProfile) return [];
     
-    // Logic now relies on profileForm (the editable data)
-    const searchStr = profileForm.title.toLowerCase();
-    const skillsArr = settings.skillsFocus.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-    const locFilter = profileForm.location.toLowerCase();
+    const searchStr = (profileForm.title || '').toLowerCase();
+    const skillsArr = (settings.skillsFocus || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+    const locFilter = (settings.location || '').toLowerCase();
 
     let results = externalJobs.map((job, idx) => {
         let score = 70;
-        const jobTitle = job.title.toLowerCase();
-        const jobLoc = job.location.toLowerCase();
+        const jobTitle = (job.title || '').toLowerCase();
+        const jobLoc = (job.location || '').toLowerCase();
 
-        // Role match
-        const titleMatch = jobTitle.includes(searchStr.split(' ')[0]);
-        if (titleMatch) score += 20;
+        if (searchStr && jobTitle.includes(searchStr.split(' ')[0])) score += 20;
+        const allSkills = [...skillsArr, ...(profileForm.skills || []).map(s => (s.name || '').toLowerCase())];
+        if (allSkills.some(skill => skill && jobTitle.includes(skill))) score += 10;
 
-        // Skills match (against focus list and profile skills)
-        const allSkills = [...skillsArr, ...profileForm.skills.map(s => s.name.toLowerCase())];
-        if (allSkills.some(skill => jobTitle.includes(skill))) score += 10;
-
-        // Work mode match
         if (settings.workMode !== 'Any' && jobLoc.includes(settings.workMode.toLowerCase())) score += 5;
-
-        // Location alignment
         if (locFilter && jobLoc.includes(locFilter)) {
             score += 15;
         } else if (locFilter && !jobLoc.includes('remote')) {
             score -= 10;
         }
 
-        // Visa match
         if (settings.visaStatus === 'Requires Sponsorship' && !job.visaSponsorship) score -= 40;
 
         return {
@@ -152,7 +164,7 @@ const TalentMatch: React.FC = () => {
     });
 
     if (matchFilter === 'high') results = results.filter(j => j.matchScore >= 85);
-    if (matchFilter === 'remote') results = results.filter(j => j.location.toLowerCase().includes('remote'));
+    if (matchFilter === 'remote') results = results.filter(j => (j.location || '').toLowerCase().includes('remote'));
 
     return results.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
   }, [selectedProfile, externalJobs, profileForm, settings, matchFilter]);
@@ -176,16 +188,16 @@ const TalentMatch: React.FC = () => {
           const newId = `c_match_${Date.now()}`;
           addCandidate({
               id: newId,
-              firstName: profileForm.name.split(' ')[0],
-              lastName: profileForm.name.split(' ').slice(1).join(' ') || 'Candidate',
+              firstName: profileForm.name.split(' ')[0] || 'Candidate',
+              lastName: profileForm.name.split(' ').slice(1).join(' ') || 'Node',
               email: email,
               role: profileForm.title,
               status: 'Active',
               stageId: 's1',
               matchScore: 0,
               skills: profileForm.skills,
-              lastActivity: 'Sourced from Matcher',
-              avatarUrl: selectedProfile.avatarUrl,
+              lastActivity: 'Sourced via Matcher',
+              avatarUrl: selectedProfile.avatarUrl || `https://picsum.photos/100/100?u=${newId}`,
               notes: internalNotes || profileForm.bio,
               isOpenToWork: true,
               salaryExpectation: settings.minSalary,
@@ -199,10 +211,10 @@ const TalentMatch: React.FC = () => {
       await bulkShareJobs([candidateId!], selectedJobs);
       
       setSelectedMatchIds([]);
-      notify("Shared Successfully", `Dispatched ${selectedJobs.length} opportunities to ${profileForm.name}.`, "success");
+      notify("Shared", `Sent ${selectedJobs.length} roles to ${profileForm.name}.`, "success");
       
     } catch (e) {
-      notify("Error", "Transmission failed.", "error");
+      notify("Transmission Error", "Failed to dispatch payload.", "error");
     } finally {
       setIsBulkSharing(false);
     }
@@ -211,13 +223,13 @@ const TalentMatch: React.FC = () => {
   const handleUpload = async () => {
     setIsProcessing(true);
     try {
-        const dummyFile = new File(["content"], "resume.pdf", { type: "application/pdf" });
+        const dummyFile = new File([""], "resume.pdf", { type: "application/pdf" });
         const newProfile = await ResumeParserService.parseResume(dummyFile);
         addTalentProfile(newProfile);
         setSelectedProfileId(newProfile.id);
         setActiveSubTab('settings');
     } catch(e) {
-        notify("Error", "Failed to parse dossier.", "error");
+        notify("Extraction Error", "Failed to parse dossier.", "error");
     } finally {
         setIsProcessing(false);
     }
@@ -231,37 +243,38 @@ const TalentMatch: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-140px)] gap-6 font-sans overflow-hidden">
-      {/* SIDEBAR - RECRUITER TALENT CLOUD */}
-      <div className="w-64 flex flex-col gap-4">
+    <div className="flex h-[calc(100vh-100px)] gap-4 font-sans overflow-hidden">
+      {/* COMPACT SIDEBAR */}
+      <div className="w-56 flex flex-col gap-3">
         <button 
           onClick={handleUpload}
-          className="w-full flex items-center justify-center gap-2 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-brand-600 transition-all shadow-xl active:scale-95 shrink-0"
+          disabled={isProcessing}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all shadow-md active:scale-95 shrink-0 disabled:opacity-50"
         >
-          {isProcessing ? <Loader2 className="animate-spin w-4 h-4" /> : <Upload size={16} />}
+          {isProcessing ? <Loader2 className="animate-spin w-3 h-3" /> : <Upload size={14} />}
           Ingest Profile
         </button>
 
-        <div className="flex-1 bg-white rounded-[2rem] border border-slate-200 overflow-hidden flex flex-col shadow-sm">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recent Extractions</h3>
-                <span className="bg-slate-200 text-slate-600 text-[10px] font-black px-2 py-0.5 rounded-full">{talentProfiles.length}</span>
+        <div className="flex-1 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col shadow-sm">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Profiles</h3>
+                <span className="bg-slate-200 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">{talentProfiles.length}</span>
             </div>
-            <div className="overflow-y-auto flex-1 p-2 space-y-1 no-scrollbar">
+            <div className="overflow-y-auto flex-1 p-1.5 space-y-1 no-scrollbar">
                 {talentProfiles.map(profile => (
                     <button 
                         key={profile.id}
                         onClick={() => setSelectedProfileId(profile.id)}
-                        className={`w-full p-3 rounded-xl flex gap-4 items-center transition-all text-left group ${
+                        className={`w-full p-2 rounded-lg flex gap-3 items-center transition-all text-left group ${
                             selectedProfileId === profile.id 
-                            ? 'bg-slate-900 text-white shadow-xl' 
+                            ? 'bg-slate-900 text-white shadow-lg' 
                             : 'hover:bg-slate-50 border border-transparent'
                         }`}
                     >
-                        <img src={profile.avatarUrl} className="w-9 h-9 rounded-xl object-cover bg-slate-100 border border-white/10" />
+                        <img src={profile.avatarUrl} className="w-8 h-8 rounded-lg object-cover bg-slate-100 border border-white/10" />
                         <div className="flex-1 min-w-0">
-                            <h4 className={`text-xs font-black uppercase tracking-tight truncate ${selectedProfileId === profile.id ? 'text-white' : 'text-slate-900'}`}>{profile.name}</h4>
-                            <p className={`text-[9px] font-bold uppercase tracking-widest truncate ${selectedProfileId === profile.id ? 'text-slate-400' : 'text-slate-500'}`}>{profile.title}</p>
+                            <h4 className={`text-[11px] font-black uppercase truncate ${selectedProfileId === profile.id ? 'text-white' : 'text-slate-900'}`}>{profile.name}</h4>
+                            <p className={`text-[8px] font-bold uppercase tracking-widest truncate ${selectedProfileId === profile.id ? 'text-slate-400' : 'text-slate-500'}`}>{profile.title}</p>
                         </div>
                     </button>
                 ))}
@@ -269,214 +282,183 @@ const TalentMatch: React.FC = () => {
         </div>
       </div>
 
-      {/* MAIN VIEW - CALIBRATION & MATCHING */}
+      {/* REFINED MAIN VIEW */}
       <div className="flex-1 flex flex-col relative">
         {selectedProfile ? (
-            <div className="flex-1 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-                {/* HEADER */}
-                <div className="p-6 border-b border-slate-100 bg-slate-50/30">
+            <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in duration-200">
+                {/* COMPACT HEADER */}
+                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/30">
                     <div className="flex justify-between items-center">
-                        <div className="flex gap-6 items-center">
-                            <img src={selectedProfile.avatarUrl} className="w-16 h-16 rounded-2xl object-cover shadow-2xl border-4 border-white" />
+                        <div className="flex gap-4 items-center">
+                            <img src={selectedProfile.avatarUrl} className="w-12 h-12 rounded-xl object-cover shadow-lg border-2 border-white" />
                             <div>
-                                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tight leading-none">
+                                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2 uppercase tracking-tight leading-none">
                                   {profileForm.name}
-                                  <span className="text-[9px] font-black bg-brand-50 text-brand-600 px-3 py-1 rounded-full border border-brand-100 uppercase tracking-widest shadow-sm">Extracted Node</span>
+                                  <span className="text-[8px] font-black bg-brand-50 text-brand-600 px-2 py-0.5 rounded border border-brand-100 uppercase tracking-widest">Active</span>
                                 </h2>
-                                <div className="flex gap-4 items-center mt-2">
-                                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5 uppercase tracking-widest">
-                                        <MapPin size={12} className="text-brand-500"/> {profileForm.location}
+                                <div className="flex gap-3 items-center mt-1">
+                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1 uppercase tracking-widest">
+                                        <MapPin size={10} className="text-brand-500"/> {profileForm.location}
                                     </span>
-                                    <div className="h-1 w-1 rounded-full bg-slate-300"></div>
-                                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5 uppercase tracking-widest">
-                                        <Briefcase size={12} className="text-brand-500"/> {profileForm.experience} Years DNA
+                                    <div className="h-0.5 w-0.5 rounded-full bg-slate-300"></div>
+                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1 uppercase tracking-widest">
+                                        <Briefcase size={10} className="text-brand-500"/> {profileForm.experience}Y
                                     </span>
                                 </div>
                             </div>
                         </div>
-                        <button onClick={() => setSelectedProfileId(null)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-2xl transition-all shadow-sm">
-                            <X size={20} />
+                        <button onClick={() => setSelectedProfileId(null)} className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-lg transition-all shadow-sm">
+                            <X size={16} />
                         </button>
                     </div>
                 </div>
 
-                {/* TABS */}
-                <div className="flex px-6 border-b border-slate-100 bg-white">
-                    <TabLink active={activeSubTab === 'settings'} onClick={() => setActiveSubTab('settings')} label="Calibration & Review" icon={<Settings size={14}/>} />
-                    <TabLink active={activeSubTab === 'matches'} onClick={() => setActiveSubTab('matches')} label="Market Resonance" icon={<Zap size={14}/>} count={matchedJobs.length} />
+                <div className="flex px-4 border-b border-slate-100 bg-white">
+                    <TabLink active={activeSubTab === 'settings'} onClick={() => setActiveSubTab('settings')} label="Audit & Calibration" icon={<Settings size={12}/>} />
+                    <TabLink active={activeSubTab === 'matches'} onClick={() => setActiveSubTab('matches')} label="Market Resonance" icon={<Zap size={12}/>} count={matchedJobs.length} />
                 </div>
 
-                {/* CONTENT */}
-                <div className="flex-1 overflow-y-auto no-scrollbar bg-slate-50/20">
+                <div className="flex-1 overflow-y-auto no-scrollbar bg-white">
                     {activeSubTab === 'settings' && (
-                        <div className="flex flex-col lg:flex-row h-full divide-x divide-slate-100">
-                            {/* DATA CORRECTION PANEL (LEFT) */}
-                            <div className="lg:w-[45%] p-8 overflow-y-auto no-scrollbar bg-white">
-                                <div className="flex items-center justify-between mb-8">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                                        <FileCheck size={18} className="text-brand-600" /> Extracted Data Audit
-                                    </h4>
-                                    <div className="px-3 py-1 bg-brand-50 text-brand-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-brand-100">Editable</div>
-                                </div>
+                        <div className="flex flex-col lg:flex-row h-full divide-x divide-slate-50">
+                            {/* AUDIT (LEFT) */}
+                            <div className="lg:w-1/2 p-6 overflow-y-auto no-scrollbar">
+                                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                                    <FileCheck size={14} className="text-brand-600" /> Identity Extraction
+                                </h4>
                                 
-                                <div className="space-y-8">
-                                    <div className="grid grid-cols-2 gap-6">
-                                        <div className="col-span-2">
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Candidate Identity</label>
-                                            <div className="relative group">
-                                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={16} />
-                                                <input 
-                                                    value={profileForm.name}
-                                                    onChange={e => setProfileForm({...profileForm, name: e.target.value})}
-                                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-                                                    placeholder="Full Name"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="col-span-2">
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Current Role DNA</label>
-                                            <div className="relative group">
-                                                <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={16} />
-                                                <input 
-                                                    value={profileForm.title}
-                                                    onChange={e => setProfileForm({...profileForm, title: e.target.value})}
-                                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-                                                    placeholder="Role Title"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="col-span-1">
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Market Geo</label>
-                                            <div className="relative group">
-                                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={16} />
-                                                <input 
-                                                    value={profileForm.location}
-                                                    onChange={e => setProfileForm({...profileForm, location: e.target.value})}
-                                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-                                                    placeholder="London, Remote, etc."
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="col-span-1">
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Years Protocol</label>
-                                            <div className="relative group">
-                                                <History className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={16} />
-                                                <input 
-                                                    type="number"
-                                                    value={profileForm.experience}
-                                                    onChange={e => setProfileForm({...profileForm, experience: parseInt(e.target.value) || 0})}
-                                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-                                                />
-                                            </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="col-span-2">
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Candidate Name</label>
+                                        <div className="relative group">
+                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                                            <input 
+                                                value={profileForm.name}
+                                                onChange={e => setProfileForm({...profileForm, name: e.target.value})}
+                                                className="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none"
+                                            />
                                         </div>
                                     </div>
-
+                                    <div className="col-span-2">
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Current Role</label>
+                                        <div className="relative group">
+                                            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                                            <input 
+                                                value={profileForm.title}
+                                                onChange={e => setProfileForm({...profileForm, title: e.target.value})}
+                                                className="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
                                     <div>
-                                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Extracted Summary Brief</label>
-                                        <textarea 
-                                            value={profileForm.bio}
-                                            onChange={e => setProfileForm({...profileForm, bio: e.target.value})}
-                                            rows={4}
-                                            className="w-full p-5 bg-slate-50 border-none rounded-2xl text-xs font-medium text-slate-600 leading-relaxed shadow-inner outline-none focus:ring-2 focus:ring-brand-500 resize-none italic"
-                                            placeholder="Extracted dossier summary..."
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Experience (Y)</label>
+                                        <input 
+                                            type="number"
+                                            value={profileForm.experience}
+                                            onChange={e => setProfileForm({...profileForm, experience: parseInt(e.target.value) || 0})}
+                                            className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner"
                                         />
                                     </div>
-
-                                    <section>
-                                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-4 px-1">Validated Skill Nodes</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {profileForm.skills.map((skill, idx) => (
-                                                <span key={idx} className="flex items-center gap-2 px-4 py-2 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold uppercase tracking-widest rounded-xl group/skill">
+                                    <div>
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Residence</label>
+                                        <input 
+                                            value={profileForm.location}
+                                            onChange={e => setProfileForm({...profileForm, location: e.target.value})}
+                                            className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner"
+                                        />
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Skills Graph</label>
+                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                            {(profileForm.skills || []).map((skill, idx) => (
+                                                <span key={idx} className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold uppercase rounded-md">
                                                     {skill.name} • {skill.years}Y
-                                                    <button onClick={() => removeSkill(idx)} className="text-slate-300 hover:text-red-500 transition-colors">
-                                                        <Trash2 size={12} />
-                                                    </button>
+                                                    <button onClick={() => removeSkill(idx)} className="text-slate-300 hover:text-red-500"><Trash2 size={10} /></button>
                                                 </span>
                                             ))}
-                                            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 border-dashed text-slate-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all">
-                                                <Plus size={14} /> Add Skill
+                                            <button className="px-2 py-1 border border-slate-200 border-dashed text-slate-400 text-[9px] font-black uppercase rounded-md hover:bg-slate-50">
+                                                <Plus size={10} className="inline mr-1" /> Add
                                             </button>
                                         </div>
-                                    </section>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* MATCH PARAMETERS PANEL (RIGHT) */}
-                            <div className="flex-1 p-8 overflow-y-auto no-scrollbar bg-white">
-                                <div className="flex items-center justify-between mb-8">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                                        <Target size={18} className="text-brand-600" /> Neural Alignment Filters
-                                    </h4>
-                                </div>
+                            {/* CALIBRATION (RIGHT) */}
+                            <div className="lg:w-1/2 p-6 overflow-y-auto no-scrollbar">
+                                <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                                    <Target size={14} className="text-brand-600" /> Match Parameters
+                                </h4>
 
-                                <div className="space-y-10">
-                                    <div className="grid grid-cols-2 gap-8">
-                                        <div className="col-span-2">
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">Calibration focus (comma separated)</label>
-                                            <div className="relative group">
-                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                                                <input 
-                                                    value={settings.skillsFocus}
-                                                    onChange={e => setSettings({...settings, skillsFocus: e.target.value})}
-                                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border-none rounded-2xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-                                                    placeholder="React, AWS, Leadership..."
-                                                />
-                                            </div>
-                                        </div>
-                                        
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Target Tech Nodes</label>
+                                        <input 
+                                            value={settings.skillsFocus}
+                                            onChange={e => setSettings({...settings, skillsFocus: e.target.value})}
+                                            className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none"
+                                            placeholder="React, Lead, Architecture..."
+                                        />
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">Comp Floor</label>
-                                            <div className="relative group">
-                                                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                                                <input 
-                                                    value={settings.minSalary}
-                                                    onChange={e => setSettings({...settings, minSalary: e.target.value})}
-                                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border-none rounded-2xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none"
-                                                    placeholder="$140k+"
-                                                />
-                                            </div>
+                                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Min. Comp</label>
+                                            <input 
+                                                value={settings.minSalary}
+                                                onChange={e => setSettings({...settings, minSalary: e.target.value})}
+                                                className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner"
+                                                placeholder="$140k+"
+                                            />
                                         </div>
-
                                         <div>
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">Deployment Node</label>
+                                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Protocol</label>
                                             <select 
                                                 value={settings.workMode}
                                                 onChange={e => setSettings({...settings, workMode: e.target.value})}
-                                                className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-inner focus:ring-2 focus:ring-brand-500 outline-none appearance-none cursor-pointer"
+                                                className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-[10px] font-black uppercase shadow-inner cursor-pointer"
                                             >
                                                 <option>Any</option>
                                                 <option>Remote</option>
                                                 <option>Hybrid</option>
-                                                <option>On-site</option>
                                             </select>
                                         </div>
+                                    </div>
 
-                                        <div className="col-span-2">
-                                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">Internal Mission Notes</label>
-                                            <textarea 
-                                                value={internalNotes}
-                                                onChange={e => setInternalNotes(e.target.value)}
-                                                rows={3}
-                                                className="w-full p-5 bg-slate-50 border-none rounded-2xl text-xs font-medium text-slate-600 shadow-inner outline-none focus:ring-2 focus:ring-brand-500 resize-none"
-                                                placeholder="Confidential Recruiter Insights..."
+                                    <div>
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Target Market Location</label>
+                                        <div className="relative group">
+                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                                            <input 
+                                                value={settings.location}
+                                                onChange={e => setSettings({...settings, location: e.target.value})}
+                                                className="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold shadow-inner focus:ring-2 focus:ring-brand-500 outline-none"
+                                                placeholder="e.g. San Francisco, London..."
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="bg-brand-600 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-2xl group/btn">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full blur-[60px] opacity-10 -mr-16 -mt-16 group-hover/btn:opacity-20 transition-opacity"></div>
-                                        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-                                            <div className="flex-1">
-                                                <h5 className="text-xl font-black uppercase tracking-tight mb-2">Initialize Resonance</h5>
-                                                <p className="text-brand-100 text-[10px] font-medium leading-relaxed uppercase tracking-widest">Re-calculate all market opportunities based on audit corrections.</p>
-                                            </div>
+                                    <div>
+                                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Internal Mission Notes</label>
+                                        <textarea 
+                                            value={internalNotes}
+                                            onChange={e => setInternalNotes(e.target.value)}
+                                            rows={2}
+                                            className="w-full p-3 bg-slate-50 border-none rounded-xl text-[11px] font-medium text-slate-600 shadow-inner resize-none"
+                                            placeholder="Insights..."
+                                        />
+                                    </div>
+
+                                    <div className="bg-slate-900 rounded-xl p-5 text-white relative overflow-hidden shadow-lg mt-4">
+                                        <div className="relative z-10 flex items-center justify-between gap-4">
+                                            <p className="text-[9px] text-slate-400 font-medium uppercase tracking-widest leading-snug">Sync market resonance based on corrections.</p>
                                             <button 
                                                 onClick={handleUpdateMatches}
                                                 disabled={isRecalibrating}
-                                                className="px-10 py-5 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-slate-50 transition-all shadow-brand-900/10 active:scale-95 flex items-center gap-3 shrink-0"
+                                                className="px-6 py-3 bg-brand-600 text-white rounded-lg font-black text-[10px] uppercase tracking-widest shadow-md hover:bg-brand-500 transition-all flex items-center gap-2 shrink-0 active:scale-95"
                                             >
-                                                {isRecalibrating ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
-                                                Sync Matches
+                                                {isRecalibrating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                                                Sync Now
                                             </button>
                                         </div>
                                     </div>
@@ -486,76 +468,69 @@ const TalentMatch: React.FC = () => {
                     )}
 
                     {activeSubTab === 'matches' && (
-                        <div className="p-8 space-y-8 animate-in fade-in duration-500">
-                            <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
-                                <div className="flex items-center gap-8">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Signal Filters:</p>
-                                    <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner">
-                                        <FilterBtn active={matchFilter === 'all'} onClick={() => setMatchFilter('all')} label="Broad Spectrum" />
-                                        <FilterBtn active={matchFilter === 'high'} onClick={() => setMatchFilter('high')} label="High Resonance" icon={<Trophy size={14}/>} />
-                                        <FilterBtn active={matchFilter === 'remote'} onClick={() => setMatchFilter('remote')} label="Remote Nodes" icon={<Globe size={14}/>} />
+                        <div className="p-6 space-y-4 animate-in fade-in duration-300">
+                            <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                <div className="flex items-center gap-4">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2">Filters:</p>
+                                    <div className="flex gap-1">
+                                        <FilterBtn active={matchFilter === 'all'} onClick={() => setMatchFilter('all')} label="All" />
+                                        <FilterBtn active={matchFilter === 'high'} onClick={() => setMatchFilter('high')} label="High" icon={<Trophy size={12}/>} />
+                                        <FilterBtn active={matchFilter === 'remote'} onClick={() => setMatchFilter('remote')} label="Remote" icon={<Globe size={12}/>} />
                                     </div>
                                 </div>
                                 <button 
                                     onClick={() => setSelectedMatchIds(selectedMatchIds.length === matchedJobs.length ? [] : matchedJobs.map(j => j.id))}
-                                    className="text-[10px] font-black text-brand-600 hover:text-brand-700 uppercase tracking-[0.2em] underline underline-offset-8 decoration-2"
+                                    className="text-[9px] font-black text-brand-600 hover:text-brand-700 uppercase tracking-widest mr-2 underline decoration-2 underline-offset-4"
                                 >
-                                    {selectedMatchIds.length === matchedJobs.length ? 'PURGE SELECTION' : `SELECT ALL (${matchedJobs.length})`}
+                                    {selectedMatchIds.length === matchedJobs.length ? 'DESELECT' : `SELECT ALL (${matchedJobs.length})`}
                                 </button>
                             </div>
 
-                            <div className="grid gap-4">
+                            <div className="grid gap-2">
                                 {matchedJobs.map((job) => (
                                     <div 
                                       key={job.id} 
                                       onClick={() => toggleMatchSelection(job.id)}
-                                      className={`bg-white p-6 rounded-[2.5rem] border transition-all cursor-pointer flex items-center gap-6 group ${
-                                        selectedMatchIds.includes(job.id) ? 'border-brand-500 bg-brand-50/20 shadow-2xl ring-8 ring-brand-500/5 scale-[1.01]' : 'border-slate-100 hover:border-brand-200 shadow-sm'
+                                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center gap-4 group ${
+                                        selectedMatchIds.includes(job.id) ? 'border-brand-500 bg-brand-50/10 shadow-md' : 'border-slate-100 hover:border-brand-200'
                                       }`}
                                     >
-                                        <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${
-                                            selectedMatchIds.includes(job.id) ? 'bg-brand-600 border-brand-600 text-white shadow-glow' : 'border-slate-200'
+                                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${
+                                            selectedMatchIds.includes(job.id) ? 'bg-brand-600 border-brand-600 text-white shadow-sm' : 'border-slate-300'
                                         }`}>
-                                            {selectedMatchIds.includes(job.id) && <Check size={16} strokeWidth={4} />}
+                                            {selectedMatchIds.includes(job.id) && <Check size={12} strokeWidth={4} />}
                                         </div>
                                         
-                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-2xl transition-all shadow-lg ${
+                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-lg transition-all ${
                                             selectedMatchIds.includes(job.id) ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-300 group-hover:bg-slate-900 group-hover:text-white'
                                         }`}>
-                                            {job.company[0]}
+                                            {job.company ? job.company[0] : '?'}
                                         </div>
 
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-3 mb-1">
-                                                <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight truncate group-hover:text-brand-600 transition-colors">{job.title}</h4>
-                                                {job.visaSponsorship && <ShieldCheck size={14} className="text-emerald-500" />}
+                                            <div className="flex items-center gap-2 mb-0.5">
+                                                <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight truncate group-hover:text-brand-600 transition-colors">{job.title || 'Mission Profile'}</h4>
+                                                {job.visaSponsorship && <ShieldCheck size={12} className="text-emerald-500" />}
                                             </div>
-                                            <div className="flex items-center gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                                <span className="text-brand-600 font-black">{job.company}</span>
+                                            <div className="flex items-center gap-3 text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                                                <span className="text-brand-600 font-black">{job.company || 'Confidential'}</span>
                                                 <span className="text-slate-200">•</span>
-                                                <span className="flex items-center gap-1.5"><MapPin size={12} className="text-brand-400"/> {job.location}</span>
-                                                {job.salary && (
-                                                    <>
-                                                        <span className="text-slate-200">•</span>
-                                                        <span className="flex items-center gap-1.5"><DollarSign size={12} className="text-brand-400"/> {job.salary}</span>
-                                                    </>
-                                                )}
+                                                <span className="flex items-center gap-1"><MapPin size={10}/> {job.location || 'Global'}</span>
                                             </div>
                                         </div>
 
-                                        <div className="text-right px-6 border-l border-slate-100 flex flex-col items-center justify-center">
-                                            <span className={`text-2xl font-black tracking-tighter ${job.matchScore! >= 85 ? 'text-emerald-500' : 'text-slate-900'}`}>
+                                        <div className="text-right px-4 border-l border-slate-100 flex flex-col items-center justify-center">
+                                            <span className={`text-lg font-black tracking-tighter ${job.matchScore! >= 85 ? 'text-emerald-500' : 'text-slate-900'}`}>
                                                 {job.matchScore}%
                                             </span>
-                                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-1">Resonance</p>
+                                            <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest">Match</p>
                                         </div>
                                     </div>
                                 ))}
                                 {matchedJobs.length === 0 && (
-                                    <div className="py-40 text-center bg-white rounded-[3rem] border border-slate-200 border-dashed">
-                                        <Search size={64} className="text-slate-100 mx-auto mb-6" />
-                                        <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">No resonance detected</h3>
-                                        <p className="text-slate-400 mt-2 font-medium italic">Adjust calibration nodes in the audit panel.</p>
+                                    <div className="py-20 text-center opacity-50">
+                                        <Search size={40} className="text-slate-200 mx-auto mb-4" />
+                                        <h3 className="text-lg font-black text-slate-400 uppercase tracking-tight">Zero Resonance</h3>
                                     </div>
                                 )}
                             </div>
@@ -563,54 +538,43 @@ const TalentMatch: React.FC = () => {
                     )}
                 </div>
 
-                {/* ACTION BAR - FLOATING SYNC DOCK */}
+                {/* COMPACT ACTION BAR */}
                 {activeSubTab === 'matches' && selectedMatchIds.length > 0 && (
-                    <div className="p-5 bg-slate-950 text-white flex justify-between items-center animate-in slide-in-from-bottom-8 shadow-[0_-25px_50px_-12px_rgba(0,0,0,0.5)] border-t border-white/5 relative z-50">
-                        <div className="flex items-center gap-8 px-8">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-brand-600 rounded-2xl flex items-center justify-center text-xl font-black shadow-2xl shadow-brand-600/30">{selectedMatchIds.length}</div>
+                    <div className="px-6 py-3 bg-slate-950 text-white flex justify-between items-center animate-in slide-in-from-bottom-4 shadow-xl border-t border-white/5 relative z-50">
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-sm font-black">{selectedMatchIds.length}</div>
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Target Payload</span>
-                                    <span className="text-sm font-black uppercase tracking-tight">Opportunities Selected</span>
+                                    <span className="text-[8px] font-black uppercase text-slate-400">Payload Selected</span>
+                                    <span className="text-[10px] font-black uppercase text-brand-400 truncate max-w-[120px]">{profileForm.name}</span>
                                 </div>
                             </div>
-                            <div className="h-10 w-px bg-white/10 hidden md:block"></div>
-                            <div className="hidden md:flex flex-col">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Recipient Node</span>
-                                <span className="text-sm font-black uppercase tracking-tight text-brand-400">{profileForm.name}</span>
-                            </div>
                         </div>
-                        <div className="flex gap-4 pr-6">
-                             <button 
-                                onClick={() => setSelectedMatchIds([])}
-                                className="px-6 py-3 text-[10px] font-black text-slate-400 hover:text-white uppercase tracking-[0.2em] transition-all"
-                            >
-                                ABORT SYNC
-                            </button>
-                            <button 
-                                onClick={handleBulkShare}
-                                disabled={isBulkSharing}
-                                className="flex items-center gap-3 px-10 py-4 bg-brand-600 hover:bg-brand-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] transition-all shadow-2xl shadow-brand-600/20 disabled:opacity-50 active:scale-95"
-                            >
-                                {isBulkSharing ? <Loader2 className="animate-spin w-4 h-4" /> : <Send size={18} />}
-                                Initiate Transmission
-                            </button>
-                        </div>
+                        <button 
+                            onClick={handleBulkShare}
+                            disabled={isBulkSharing}
+                            className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-lg shadow-brand-600/20 disabled:opacity-50 active:scale-95"
+                        >
+                            {isBulkSharing ? <Loader2 className="animate-spin w-3 h-3" /> : <Send size={14} />}
+                            Initiate Transmission
+                        </button>
                     </div>
                 )}
             </div>
         ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center bg-white rounded-[3rem] border border-slate-200 border-dashed p-20 shadow-inner group">
-                <div className="w-24 h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-200 mb-8 border border-slate-100 group-hover:scale-110 transition-transform duration-500">
-                    <UserPlus size={48} strokeWidth={1} />
+            <div className="flex-1 flex flex-col items-center justify-center text-center bg-white rounded-2xl border border-slate-200 border-dashed p-10 shadow-inner group animate-in fade-in duration-300">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200 mb-6 border border-slate-100 group-hover:scale-105 transition-transform duration-300">
+                    <UserPlus size={32} strokeWidth={1} />
                 </div>
-                <h3 className="text-3xl font-black text-slate-900 mb-4 uppercase tracking-tighter">Market Resonance Engine</h3>
-                <p className="text-slate-400 max-w-md mx-auto text-lg font-medium leading-relaxed mb-10">Ingest a candidate dossier to begin autonomous market discovery and neural job alignment.</p>
+                <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Neural Matching Ready</h3>
+                <p className="text-slate-400 max-w-xs mx-auto text-sm font-medium leading-relaxed mb-8">Provision a candidate profile from the pool to begin market mapping.</p>
                 <button 
                     onClick={handleUpload}
-                    className="px-12 py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] hover:bg-brand-600 transition-all shadow-2xl active:scale-95 flex items-center gap-3"
+                    disabled={isProcessing}
+                    className="px-8 py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-brand-600 transition-all shadow-xl active:scale-95 flex items-center gap-2 disabled:opacity-50"
                 >
-                    <Plus size={18} /> Provision Talent Node
+                    {isProcessing ? <Loader2 className="animate-spin w-4 h-4" /> : <Plus size={16} />} 
+                    Provision Profile
                 </button>
             </div>
         )}
@@ -618,30 +582,5 @@ const TalentMatch: React.FC = () => {
     </div>
   );
 };
-
-const TabLink = ({ active, onClick, label, icon, count }: any) => (
-    <button 
-        onClick={onClick}
-        className={`py-6 px-8 text-[11px] font-black uppercase tracking-[0.2em] flex items-center gap-3 relative transition-all ${active ? 'text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}
-    >
-        {icon}
-        {label}
-        {count !== undefined && count > 0 && (
-            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border transition-all ${active ? 'bg-brand-600 text-white border-brand-600 shadow-glow' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                {count}
-            </span>
-        )}
-        {active && <div className="absolute bottom-0 left-0 w-full h-1 bg-brand-600 shadow-glow" />}
-    </button>
-);
-
-const FilterBtn = ({ active, onClick, label, icon }: any) => (
-  <button 
-    onClick={onClick}
-    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${active ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
-  >
-      {icon}{label}
-  </button>
-);
 
 export default TalentMatch;
