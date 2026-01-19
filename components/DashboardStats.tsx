@@ -15,23 +15,23 @@ import { useStore } from '../context/StoreContext';
 type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const BASE_CHART_VALUES = [
-  { inflow: 8, submissions: 12 }, 
-  { inflow: 14, submissions: 18 }, 
-  { inflow: 10, submissions: 15 },
-  { inflow: 18, submissions: 22 }, 
-  { inflow: 25, submissions: 30 }, 
-  { inflow: 20, submissions: 25 }, 
-  { inflow: 30, submissions: 35 },
+  { inflow: 8, submissions: 12, hires: 1 }, 
+  { inflow: 14, submissions: 18, hires: 2 }, 
+  { inflow: 10, submissions: 15, hires: 1 },
+  { inflow: 18, submissions: 22, hires: 3 }, 
+  { inflow: 25, submissions: 30, hires: 4 }, 
+  { inflow: 20, submissions: 25, hires: 2 }, 
+  { inflow: 30, submissions: 35, hires: 5 },
 ];
 
-const StatCard = ({ title, value, sub, icon, color, description, trend, onClick }: any) => (
+const StatCard = ({ title, value, icon, color, description, onClick }: any) => (
   <div 
     onClick={onClick}
-    className={`bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between group transition-all ${
+    className={`bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-between group transition-all h-full ${
       onClick ? 'cursor-pointer hover:shadow-md hover:border-brand-500 active:scale-[0.98]' : 'hover:shadow-md'
     }`}
   >
-    <div className="flex items-start justify-between mb-6">
+    <div className="flex items-start justify-between">
       <div>
         <div className="flex items-center gap-2 mb-2">
           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{title}</p>
@@ -47,12 +47,6 @@ const StatCard = ({ title, value, sub, icon, color, description, trend, onClick 
       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${color} text-white shadow-sm transition-transform group-hover:scale-110`}>
         {icon}
       </div>
-    </div>
-    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-50">
-        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
-            {sub}
-        </span>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Growth Velocity</span>
     </div>
   </div>
 );
@@ -106,11 +100,11 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
         movements: Math.round(baseStats.moves * mult).toLocaleString(),
         placements: Math.round(baseStats.hires * mult).toLocaleString(),
         candidates: candidates.length.toLocaleString(),
-        trend: timeRange === '7D' || timeRange === '1D' ? '+4%' : '+18%',
         chartData: BASE_CHART_VALUES.map((d, idx) => ({ 
             name: labels[idx] || `P${idx + 1}`, 
             inflow: Math.round(d.inflow * mult),
-            submissions: Math.round(d.submissions * mult)
+            submissions: Math.round(d.submissions * mult),
+            hires: Math.round(d.hires * mult)
         }))
     };
   }, [timeRange, recruiterStats, candidates]);
@@ -167,8 +161,6 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
         <StatCard 
           title="Total Candidates" 
           value={stats.candidates} 
-          sub="Live Pool" 
-          trend="neutral"
           icon={<Users size={24} />} 
           color="bg-brand-600" 
           description="Total candidates currently registered in the agency talent cloud. Click to manage."
@@ -177,8 +169,6 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
         <StatCard 
           title="Total Submissions" 
           value={stats.submissions} 
-          sub={stats.trend} 
-          trend="up"
           icon={<Send size={24} />} 
           color="bg-slate-900" 
           description="Total job applications submitted (Score weight: 2pt). Click to view ledger."
@@ -187,8 +177,6 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
         <StatCard 
           title="Pipeline Movements" 
           value={stats.movements} 
-          sub="Stable" 
-          trend="neutral"
           icon={<Zap size={24} />} 
           color="bg-purple-600" 
           description="Successful stage progressions (Score weight: 10pt). Click to view pipeline."
@@ -197,8 +185,6 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
         <StatCard 
           title="Confirmed Hires" 
           value={stats.placements} 
-          sub="+12%" 
-          trend="up"
           icon={<Trophy size={24} />} 
           color="bg-emerald-600" 
           description="Total successful candidate placements. Click to view hired talent pool."
@@ -211,16 +197,20 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
           <div className="flex items-center justify-between mb-12">
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Market & Pipeline Flow</p>
-              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Inflow & Submissions</h3>
+              <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mt-1">Operational Trajectory</h3>
             </div>
             <div className="flex flex-wrap gap-4">
                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate Inflow</span>
+                    <div className="w-3 h-3 bg-slate-400 rounded-full"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Inflow</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-brand-500 rounded-full"></div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Submissions</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Submissions</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Confirmed Hires</span>
                 </div>
             </div>
           </div>
@@ -229,12 +219,16 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
               <AreaChart data={stats.chartData}>
                 <defs>
                   <linearGradient id="colorInflow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#94a3b8" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorSubmissions" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorHires" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -249,10 +243,11 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
                     type="monotone" 
                     dataKey="inflow" 
                     name="Inflow"
-                    stroke="#10b981" 
+                    stroke="#94a3b8" 
                     fillOpacity={1} 
                     fill="url(#colorInflow)" 
-                    strokeWidth={4} 
+                    strokeWidth={2} 
+                    strokeDasharray="5 5"
                 />
                 <Area 
                     type="monotone" 
@@ -261,6 +256,15 @@ const DashboardStats: React.FC<DashboardStatsProps> = ({
                     stroke="#3b82f6" 
                     fillOpacity={1} 
                     fill="url(#colorSubmissions)" 
+                    strokeWidth={4} 
+                />
+                <Area 
+                    type="monotone" 
+                    dataKey="hires" 
+                    name="Confirmed Hires"
+                    stroke="#10b981" 
+                    fillOpacity={1} 
+                    fill="url(#colorHires)" 
                     strokeWidth={4} 
                 />
               </AreaChart>
