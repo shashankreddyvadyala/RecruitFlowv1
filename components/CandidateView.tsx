@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Candidate, Interview, ExternalJob, Skill, ResumeFile, UserRole } from '../types';
+import { Candidate, Interview, ExternalJob, Skill, ResumeFile, UserRole, RecruiterStats } from '../types';
 import { analyzeCandidate, generateOutreachEmail, suggestInterviewSlots } from '../services/geminiService';
 import { 
   Mail, 
@@ -53,7 +53,8 @@ import {
   Globe,
   Scale,
   User,
-  Trophy
+  Trophy,
+  ChevronDown
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import ActivityTimeline from './ActivityTimeline';
@@ -75,6 +76,8 @@ const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) 
     recruiterStats,
     userRole,
     removeCandidate,
+    addCandidate,
+    addActivity,
     updateCandidateNotes, 
     notify 
   } = useStore();
@@ -88,6 +91,17 @@ const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<CandidateStatusFilter>(initialFilter);
   const [timeRange, setTimeRange] = useState<TimeRange>('ALL');
+
+  // Invitation Modal State
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    role: '',
+    assignedRecruiter: recruiterStats[0]?.name || ''
+  });
 
   const isOwner = userRole === UserRole.Owner;
 
@@ -153,7 +167,7 @@ const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) 
       setCandidateNotes(activeCandidate.notes || '');
       setActiveSubTab('info');
     }
-  }, [selectedCandidateId]);
+  }, [selectedCandidateId, activeCandidate]);
 
   const handleSaveNotes = () => {
     if (!activeCandidate) return;
@@ -163,6 +177,51 @@ const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) 
       setIsSavingNotes(false);
       notify("Saved", "Internal intelligence updated.", "success");
     }, 600);
+  };
+
+  const handleInviteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteForm.email || !inviteForm.firstName) return;
+    
+    setIsInviting(true);
+    const newId = `c_inv_${Date.now()}`;
+    
+    // Provision new node
+    const newCandidate: Candidate = {
+        id: newId,
+        firstName: inviteForm.firstName,
+        lastName: inviteForm.lastName,
+        email: inviteForm.email,
+        role: inviteForm.role || 'Unspecified Node',
+        status: 'New',
+        stageId: 's1',
+        matchScore: 0,
+        skills: [],
+        lastActivity: 'Invitation Dispatched',
+        avatarUrl: `https://picsum.photos/100/100?u=${newId}`,
+        assignedRecruiter: inviteForm.assignedRecruiter,
+        isOpenToWork: true,
+        notes: 'Node provisioned via manual invitation.'
+    };
+
+    // Simulate Network Latency
+    await new Promise(r => setTimeout(r, 1200));
+    
+    addCandidate(newCandidate);
+    addActivity({
+        id: `act_inv_${Date.now()}`,
+        type: 'Email',
+        subject: 'Invitation Transmitted',
+        content: `Agency invitation dispatched to ${inviteForm.email} for the ${inviteForm.role} role.`,
+        timestamp: new Date().toISOString(),
+        author: inviteForm.assignedRecruiter || 'System',
+        entityId: newId
+    });
+
+    notify("Invitation Sent", `Target node ${inviteForm.firstName} provisioned successfully.`, "success");
+    setIsInviting(false);
+    setShowInviteModal(false);
+    setInviteForm({ firstName: '', lastName: '', email: '', role: '', assignedRecruiter: recruiterStats[0]?.name || '' });
   };
 
   const handleEmail = async (candidate: Candidate, e: React.MouseEvent) => {
@@ -201,6 +260,13 @@ const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) 
         </div>
         
         <div className="flex flex-wrap items-center gap-4">
+          <button 
+            onClick={() => setShowInviteModal(true)}
+            className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-700 transition-all shadow-xl shadow-brand-600/20 active:scale-95"
+          >
+            <UserPlus size={16} /> Invite Candidate
+          </button>
+
           <div className="flex bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
                 {(['1D', '7D', '1M', '3M', '6M', '1Y', 'ALL'] as TimeRange[]).map((opt) => (
                     <button 
@@ -299,6 +365,109 @@ const CandidateView: React.FC<CandidateViewProps> = ({ initialFilter = 'all' }) 
           )}
         </div>
       </div>
+
+      {/* INVITE CANDIDATE MODAL */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-white/20">
+             <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg"><UserPlus size={20} /></div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Invite Candidate Node</h3>
+                </div>
+                <button onClick={() => setShowInviteModal(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400"><X size={20} /></button>
+             </div>
+             <form onSubmit={handleInviteSubmit} className="p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">First Name</label>
+                        <input 
+                            required 
+                            type="text" 
+                            className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" 
+                            placeholder="Alex"
+                            value={inviteForm.firstName}
+                            onChange={e => setInviteForm({...inviteForm, firstName: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Last Name</label>
+                        <input 
+                            required 
+                            type="text" 
+                            className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" 
+                            placeholder="Chen"
+                            value={inviteForm.lastName}
+                            onChange={e => setInviteForm({...inviteForm, lastName: e.target.value})}
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Identity (Email)</label>
+                    <div className="relative group">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={18} />
+                        <input 
+                            required 
+                            type="email" 
+                            className="w-full pl-12 pr-6 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" 
+                            placeholder="alex.chen@global.ai"
+                            value={inviteForm.email}
+                            onChange={e => setInviteForm({...inviteForm, email: e.target.value})}
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Alignment Role</label>
+                    <div className="relative group">
+                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-600 transition-colors" size={18} />
+                        <input 
+                            required 
+                            type="text" 
+                            className="w-full pl-12 pr-6 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" 
+                            placeholder="Lead React Architect"
+                            value={inviteForm.role}
+                            onChange={e => setInviteForm({...inviteForm, role: e.target.value})}
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ownership Assignment</label>
+                    <div className="relative">
+                        <select 
+                            value={inviteForm.assignedRecruiter}
+                            onChange={e => setInviteForm({...inviteForm, assignedRecruiter: e.target.value})}
+                            className="w-full px-5 py-3.5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner appearance-none uppercase"
+                        >
+                            <option value="">Unassigned</option>
+                            {recruiterStats.map(r => (
+                                <option key={r.id} value={r.name}>{r.name}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                </div>
+
+                <div className="bg-brand-50 p-4 rounded-2xl border border-brand-100 flex items-center gap-3">
+                    <Sparkles size={18} className="text-brand-600" />
+                    <p className="text-[10px] font-bold text-brand-700 uppercase tracking-wide leading-relaxed">
+                        Provisioning this node will trigger a welcome sequence and activate portal synchronization.
+                    </p>
+                </div>
+
+                <button 
+                    type="submit" 
+                    disabled={isInviting}
+                    className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-slate-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                    {isInviting ? <Loader2 className="animate-spin" size={18} /> : <><Send size={18} /> Initiate Invitation Protocol</>}
+                </button>
+             </form>
+          </div>
+        </div>
+      )}
 
       {/* INTELLIGENCE DRAWER */}
       {activeCandidate && (
