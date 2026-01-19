@@ -74,6 +74,16 @@ const InterviewCalendar: React.FC = () => {
     notes: ''
   });
 
+  // Date Formatting Helper: MM-DD-YYYY
+  const formatToMMDDYYYY = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "N/A";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
+
   const daysInMonth = useMemo(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
@@ -159,12 +169,8 @@ const InterviewCalendar: React.FC = () => {
   };
 
   const formatDate = (isoString: string, tz: string) => {
-    return new Intl.DateTimeFormat('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      timeZone: tz
-    }).format(new Date(isoString));
+    // Fix: Using standardized MM-DD-YYYY for the header too
+    return formatToMMDDYYYY(isoString);
   };
 
   const filteredInterviews = useMemo(() => {
@@ -340,6 +346,7 @@ const InterviewCalendar: React.FC = () => {
                     {isFirstOfDate && (
                         <div className="mt-12 mb-6 flex items-center gap-4">
                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                              {/* Fix: Standardized to MM-DD-YYYY via formatToMMDDYYYY */}
                               {formatDate(int.startTime, displayTimezone)}
                           </h4>
                           <div className="h-px bg-slate-200 flex-1"></div>
@@ -392,7 +399,7 @@ const InterviewCalendar: React.FC = () => {
         <div className="fixed inset-0 z-[200] bg-slate-950/60 backdrop-blur-md flex items-center justify-end animate-in fade-in duration-300">
           <div className="absolute inset-0" onClick={() => setSelectedInterview(null)}></div>
           <div className="relative bg-white w-full max-w-xl h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 overflow-hidden">
-            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-start">
                  <div className="flex gap-4 items-center">
                     <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl">
                         {selectedInterview.location ? <Video size={24}/> : <PhoneCall size={24}/>}
@@ -415,7 +422,8 @@ const InterviewCalendar: React.FC = () => {
                 </div>
                 <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner">
                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Calendar Date</p>
-                   <p className="text-xl font-black text-slate-900 leading-none">{new Date(selectedInterview.startTime).toLocaleDateString()}</p>
+                   {/* Fix: Standardized to MM-DD-YYYY */}
+                   <p className="text-xl font-black text-slate-900 leading-none">{formatToMMDDYYYY(selectedInterview.startTime)}</p>
                 </div>
               </div>
 
@@ -435,7 +443,7 @@ const InterviewCalendar: React.FC = () => {
               </div>
 
               <div className="p-8 bg-slate-900 rounded-[2rem] text-white relative overflow-hidden shadow-2xl">
-                 <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[80px] opacity-20 -mr-16 -mt-16"></div>
+                 <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-20 -mr-16 -mt-16"></div>
                  <h4 className="text-brand-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4">Role Insight</h4>
                  <p className="text-lg font-black uppercase tracking-tight leading-tight">{selectedInterview.jobTitle}</p>
                  <p className="text-slate-400 text-xs mt-3 font-medium">Coordinate with candidate to ensure alignment on core competencies for this {selectedInterview.type} round.</p>

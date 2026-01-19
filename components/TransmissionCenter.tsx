@@ -32,7 +32,13 @@ import {
   Star,
   Mail,
   ShieldAlert,
-  Scale
+  Scale,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
+  Terminal,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 
 type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
@@ -40,6 +46,7 @@ type ViewTab = 'submissions' | 'pipeline';
 
 interface TransmissionCenterProps {
   initialTab?: ViewTab;
+  initialRecruiterFilter?: string | null;
 }
 
 interface PipelineNode {
@@ -56,7 +63,7 @@ interface SubmissionNode {
     type: string;
 }
 
-const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 'submissions' }) => {
+const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 'submissions', initialRecruiterFilter }) => {
   const { activities, candidates, externalJobs, recruiterStats } = useStore();
   const [activeTab, setActiveTab] = useState<ViewTab>(initialTab);
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
@@ -65,11 +72,25 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
   // Drawer States
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedCandidateTimelineId, setSelectedCandidateTimelineId] = useState<string | null>(null);
+  const [isBriefExpanded, setIsBriefExpanded] = useState(false);
 
-  // Sync tab if prop changes
+  // Apply initial filter if passed from team view
   useEffect(() => {
     setActiveTab(initialTab);
-  }, [initialTab]);
+    if (initialRecruiterFilter) {
+      setSearchQuery(initialRecruiterFilter);
+    }
+  }, [initialTab, initialRecruiterFilter]);
+
+  // Date Formatting Helper: MM-DD-YYYY
+  const formatToMMDDYYYY = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "N/A";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
 
   // --- DATA PROCESSING: SUBMISSIONS ---
   const resolvedSubmissions = useMemo(() => {
@@ -116,7 +137,8 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
             node.candidate.firstName.toLowerCase().includes(searchStr) || 
             node.candidate.lastName.toLowerCase().includes(searchStr) ||
             node.job.title.toLowerCase().includes(searchStr) ||
-            node.job.company.toLowerCase().includes(searchStr);
+            node.job.company.toLowerCase().includes(searchStr) ||
+            node.recruiter.toLowerCase().includes(searchStr);
 
         return matchesTime && matchesSearch;
     }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -155,7 +177,9 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
         node.candidate.firstName.toLowerCase().includes(searchStr) || 
         node.candidate.lastName.toLowerCase().includes(searchStr) ||
         node.application.jobTitle.toLowerCase().includes(searchStr) ||
-        node.application.company.toLowerCase().includes(searchStr);
+        node.application.company.toLowerCase().includes(searchStr) ||
+        node.application.status.toLowerCase().includes(searchStr) || // Included status matching
+        (node.candidate.assignedRecruiter && node.candidate.assignedRecruiter.toLowerCase().includes(searchStr));
 
       return matchesTime && matchesSearch;
     }).sort((a, b) => new Date(b.application.appliedDate).getTime() - new Date(a.application.appliedDate).getTime());
@@ -249,6 +273,11 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                Clear Filters
+              </button>
+            )}
         </div>
 
         {/* LEDGER TABLE */}
@@ -257,7 +286,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                  {activeTab === 'submissions' ? 'CANDIDATE TARGET' : 'CANDIDATE'}
+                  {activeTab === 'submissions' ? 'CANDIDATE TARGET' : 'CANDIDATE TARGET'}
                 </th>
                 <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                   MISSION / JOB INFO
@@ -291,12 +320,25 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                             className="text-left group/btn"
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-lg group-hover/btn:scale-110 transition-transform">
-                                    <Layout size={14} />
+                                <div className="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-lg group-hover/btn:scale-110 transition-transform shrink-0">
+                                    <Layout size={18} />
                                 </div>
-                                <div>
-                                    <p className="font-black text-slate-900 uppercase tracking-tight text-xs mb-0.5 group-hover/btn:text-brand-600 transition-colors">{node.job.title}</p>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{node.job.company}</p>
+                                <div className="min-w-0">
+                                    <p className="font-black text-slate-900 uppercase tracking-tight text-xs mb-0.5 group-hover/btn:text-brand-600 transition-colors truncate">{node.job.title}</p>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{node.job.company}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                            <MapPin size={8} className="text-brand-500" /> {node.job.location}
+                                        </span>
+                                        <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                            <Globe size={8} className="text-brand-500" /> {node.job.type}
+                                        </span>
+                                        {node.job.salary && (
+                                            <span className="flex items-center gap-1 text-[8px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                                <DollarSign size={8} /> {node.job.salary}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </button>
@@ -313,64 +355,82 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                          </div>
                       </td>
                       <td className="px-10 py-6 text-right">
-                        <p className="text-xs font-black text-slate-900 tracking-tight">{new Date(node.timestamp).toLocaleDateString()}</p>
+                        <p className="text-xs font-black text-slate-900 tracking-tight">{formatToMMDDYYYY(node.timestamp)}</p>
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{new Date(node.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
                       </td>
                     </tr>
                   );
                 })
               ) : (
-                filteredMovements.map((node, idx) => (
-                  <tr key={`${node.candidate.id}-${idx}`} className="hover:bg-purple-50/20 transition-all group">
-                    <td className="px-10 py-6">
-                      <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="flex items-center gap-3 text-left">
-                        <img src={node.candidate.avatarUrl} className="w-10 h-10 rounded-xl object-cover border-2 border-white shadow-md group-hover:scale-110 transition-transform" />
-                        <div>
-                          <p className="font-black text-slate-900 uppercase tracking-tight text-sm leading-none mb-1 group-hover:text-purple-600 transition-colors">{node.candidate.firstName} {node.candidate.lastName}</p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{node.candidate.email}</p>
-                        </div>
-                      </button>
-                    </td>
-                    <td className="px-10 py-6">
-                        <button 
-                            onClick={() => {
-                                const matchedJob = externalJobs.find(ej => ej.title === node.application.jobTitle);
-                                if (matchedJob) setSelectedJobId(matchedJob.id);
-                            }}
-                            className="text-left group/btn"
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-lg group-hover/btn:scale-110 transition-transform">
-                                    <Zap size={14} />
-                                </div>
-                                <div>
-                                    <p className="font-black text-slate-900 uppercase tracking-tight text-xs mb-0.5 group-hover/btn:text-brand-600 transition-colors">{node.application.jobTitle}</p>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{node.application.company}</p>
-                                </div>
-                            </div>
+                filteredMovements.map((node, idx) => {
+                  const matchedJob = externalJobs.find(ej => 
+                    ej.title.toLowerCase().trim() === node.application.jobTitle.toLowerCase().trim() && 
+                    ej.company.toLowerCase().trim() === node.application.company.toLowerCase().trim()
+                  );
+                  return (
+                    <tr key={`${node.candidate.id}-${idx}`} className="hover:bg-purple-50/20 transition-all group">
+                      <td className="px-10 py-6">
+                        <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="flex items-center gap-3 text-left">
+                          <img src={node.candidate.avatarUrl} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-sm" />
+                          <div>
+                            <p className="text-sm font-black text-slate-900 uppercase tracking-tight leading-none mb-1 group-hover:text-purple-600 transition-colors">{node.candidate.firstName} {node.candidate.lastName}</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{node.candidate.role}</p>
+                          </div>
                         </button>
-                    </td>
-                    <td className="px-10 py-6">
-                       <div className="flex items-center gap-3">
-                          <img src={getRecruiterAvatar(node.candidate.assignedRecruiter) || `https://picsum.photos/40/40?u=${node.candidate.id}`} className="w-6 h-6 rounded-lg border border-slate-200 object-cover" />
-                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{node.candidate.assignedRecruiter || 'Unassigned'}</span>
-                       </div>
-                    </td>
-                    <td className="px-10 py-6 text-center">
-                      <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
-                          node.application.status === 'Hired' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                          node.application.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-100' :
-                          'bg-purple-50 text-purple-600 border-purple-100 shadow-sm'
-                      }`}>
-                          <Timer size={12} /> {node.application.status}
-                      </div>
-                    </td>
-                    <td className="px-10 py-6 text-right">
-                      <p className="text-xs font-black text-slate-900 tracking-tight">{node.application.appliedDate}</p>
-                      <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="text-[9px] font-black text-brand-600 uppercase tracking-widest hover:underline mt-1">View Timeline</button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-10 py-6">
+                          <button 
+                              onClick={() => {
+                                  if (matchedJob) setSelectedJobId(matchedJob.id);
+                              }}
+                              className="text-left group/btn"
+                          >
+                              <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-lg group-hover/btn:scale-110 transition-transform shrink-0">
+                                      <Zap size={18} />
+                                  </div>
+                                  <div className="min-w-0">
+                                      <p className="font-black text-slate-900 uppercase tracking-tight text-xs mb-0.5 group-hover/btn:text-brand-600 transition-colors truncate">{node.application.jobTitle}</p>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{node.application.company}</p>
+                                      <div className="flex flex-wrap gap-2">
+                                          <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                              <MapPin size={8} className="text-brand-500" /> {matchedJob?.location || 'Remote/Global'}
+                                          </span>
+                                          <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                              <Globe size={8} className="text-brand-500" /> {matchedJob?.type || 'Full-time'}
+                                          </span>
+                                          {(matchedJob?.salary || 'Market Rate') && (
+                                              <span className="flex items-center gap-1 text-[8px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                                  <DollarSign size={8} /> {matchedJob?.salary || '$140k - $210k'}
+                                              </span>
+                                          )}
+                                      </div>
+                                  </div>
+                              </div>
+                          </button>
+                      </td>
+                      <td className="px-10 py-6">
+                        <div className="flex items-center gap-3">
+                            <img src={getRecruiterAvatar(node.candidate.assignedRecruiter) || `https://picsum.photos/40/40?u=${node.candidate.id}`} className="w-6 h-6 rounded-lg border border-slate-200 object-cover" />
+                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{node.candidate.assignedRecruiter || 'Unassigned'}</span>
+                        </div>
+                      </td>
+                      <td className="px-10 py-6 text-center">
+                        <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
+                            node.application.status === 'Hired' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                            node.application.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-100' :
+                            'bg-purple-50 text-purple-600 border-purple-100 shadow-sm'
+                        }`}>
+                            <Timer size={12} /> {node.application.status}
+                        </div>
+                      </td>
+                      <td className="px-10 py-6 text-right">
+                        <p className="text-xs font-black text-slate-900 tracking-tight">{formatToMMDDYYYY(node.application.appliedDate)}</p>
+                        <button onClick={() => setSelectedCandidateTimelineId(node.candidate.id)} className="text-[9px] font-black text-brand-600 uppercase tracking-widest hover:underline mt-1">View Timeline</button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -388,7 +448,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
       {/* JOB INTELLIGENCE DRAWER */}
       {activeJob && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-md z-[100] flex justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0" onClick={() => setSelectedJobId(null)}></div>
+          <div className="absolute inset-0" onClick={() => { setSelectedJobId(null); setIsBriefExpanded(false); }}></div>
           <div className="relative bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 overflow-hidden">
             <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-start">
               <div className="flex gap-4 items-center">
@@ -404,7 +464,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                   </div>
                 </div>
               </div>
-              <button onClick={() => setSelectedJobId(null)} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-2xl transition-all shadow-sm">
+              <button onClick={() => { setSelectedJobId(null); setIsBriefExpanded(false); }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-red-500 rounded-2xl transition-all shadow-sm">
                 <X size={24} />
               </button>
             </div>
@@ -412,13 +472,73 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
             <div className="flex-1 overflow-y-auto p-10 space-y-12 no-scrollbar">
               <section>
                   <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
-                      <FileText size={18} className="text-brand-600" /> Mission Brief
+                      <Layers size={18} className="text-brand-600" /> Mission Intelligence
                   </h4>
                   <div className="grid grid-cols-2 gap-4">
                       <DrawerInfoCard icon={<Globe size={16}/>} label="Work Protocol" value={activeJob.type} />
-                      <DrawerInfoCard icon={<DollarSign size={16}/>} label="Compensation" value={activeJob.salary || '$140k+ Base'} />
+                      <DrawerInfoCard icon={<DollarSign size={16}/>} label="Compensation" value={activeJob.salary || '$140k - $210k Target'} />
                       <DrawerInfoCard icon={<MapPin size={16}/>} label="Deployment" value={activeJob.location} />
+                      <DrawerInfoCard icon={<Clock size={16}/>} label="Market Entry" value={activeJob.postedAt} />
                       <DrawerInfoCard icon={<ShieldCheck size={16}/>} label="Visa Policy" value={activeJob.visaSponsorship ? 'Sponsorship Enabled' : 'Native Candidates Only'} />
+                      <DrawerInfoCard icon={<Cpu size={16}/>} label="Source Node" value={activeJob.source} />
+                  </div>
+              </section>
+
+              <section className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
+                        <FileText size={18} className="text-brand-600" /> Mission Brief
+                    </h4>
+                    <button 
+                        onClick={() => setIsBriefExpanded(!isBriefExpanded)}
+                        className="text-[10px] font-black text-brand-600 uppercase tracking-widest flex items-center gap-1.5 hover:underline"
+                    >
+                        {isBriefExpanded ? <><ChevronUp size={14}/> View Less</> : <><ChevronDown size={14}/> View Full Requirement</>}
+                    </button>
+                  </div>
+                  
+                  <div className={`bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 transition-all duration-500 relative overflow-hidden shadow-inner ${isBriefExpanded ? 'max-h-[1000px]' : 'max-h-[200px]'}`}>
+                      <div className="space-y-4">
+                        <p className="text-sm text-slate-600 leading-relaxed italic">
+                            "Live detection for a high-priority {activeJob.title} mission at {activeJob.company}. The target node is responsible for architecting scalable frontend environments and optimizing latency across distributed clusters."
+                        </p>
+                        
+                        {isBriefExpanded && (
+                            <div className="pt-6 border-t border-slate-200 mt-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                                <div>
+                                    <h5 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                        <Terminal size={14} className="text-brand-500" /> Technical Specification
+                                    </h4>
+                                    <ul className="grid grid-cols-1 gap-2">
+                                        {['Advanced React & Next.js orchestration', 'Cloud-native infrastructure (AWS/Vercel)', 'Real-time state synchronization nodes', 'High-fidelity UI/UX component systems'].map((spec, i) => (
+                                            <li key={i} className="flex items-start gap-3 text-xs text-slate-500 font-medium">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-brand-400 mt-1.5 shrink-0" />
+                                                {spec}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                
+                                <div>
+                                    <h5 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                        <Sparkles size={14} className="text-purple-500" /> Role Responsibilities
+                                    </h5>
+                                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                                        Candidate must drive technical vision for the {activeJob.company} core product line. This includes leading code reviews, implementing autonomous CI/CD pipelines, and collaborating with cross-functional nodes for rapid deployment cycles in the {activeJob.location} region.
+                                    </p>
+                                </div>
+                                
+                                <div className="p-4 bg-white/50 rounded-2xl border border-slate-100">
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Recruiter Note:</p>
+                                    <p className="text-xs text-slate-600 font-medium mt-1">"Market resonance for this role is currently high. Priority given to staff-level engineering profiles with proven scale experience."</p>
+                                </div>
+                            </div>
+                        )}
+                      </div>
+                      
+                      {!isBriefExpanded && (
+                        <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none" />
+                      )}
                   </div>
               </section>
 
@@ -434,7 +554,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
 
                   <div className="space-y-4">
                       {talentForActiveJob.length > 0 ? talentForActiveJob.map(({ candidate, status, date }) => (
-                          <div key={candidate.id} onClick={() => { setSelectedJobId(null); setSelectedCandidateTimelineId(candidate.id); }} className="bg-slate-50 border border-slate-100 p-6 rounded-[2.5rem] flex items-center justify-between group hover:bg-white hover:shadow-xl hover:border-brand-100 transition-all cursor-pointer">
+                          <div key={candidate.id} onClick={() => { setSelectedJobId(null); setSelectedCandidateTimelineId(candidate.id); setIsBriefExpanded(false); }} className="bg-slate-50 border border-slate-100 p-6 rounded-[2.5rem] flex items-center justify-between group hover:bg-white hover:shadow-xl hover:border-brand-100 transition-all cursor-pointer">
                               <div className="flex items-center gap-6">
                                   <img src={candidate.avatarUrl} className="w-12 h-12 rounded-2xl object-cover shadow-md border-2 border-white" />
                                   <div>
@@ -456,7 +576,7 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                                   }`}>
                                       {status}
                                   </div>
-                                  <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Actioned: {date}</p>
+                                  <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Actioned: {formatToMMDDYYYY(date)}</p>
                               </div>
                           </div>
                       )) : (
@@ -465,18 +585,6 @@ const TransmissionCenter: React.FC<TransmissionCenterProps> = ({ initialTab = 's
                               <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">No submission nodes detected for this role.</p>
                           </div>
                       )}
-                  </div>
-              </section>
-
-              <section className="bg-slate-900 p-8 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-20 -mr-16 -mt-16"></div>
-                  <div className="relative z-10">
-                      <h4 className="text-brand-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4 flex items-center gap-2">
-                          <History size={14} /> Mission Sync Logic
-                      </h4>
-                      <p className="text-sm text-slate-300 leading-relaxed italic">
-                          "Analyzing the agency cloud for {activeJob.title}... Detected {talentForActiveJob.length} successful transmissions. Resonance levels indicate high potential for {activeJob.company} within the current {timeRange} window."
-                      </p>
                   </div>
               </section>
             </div>

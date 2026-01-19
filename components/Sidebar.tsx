@@ -23,7 +23,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    ...(isOwner ? [{ id: 'agency-os', label: 'Performance', icon: <Building size={20} /> }] : []),
     ...(isOwner ? [{ id: 'team', label: 'My Team', icon: <UsersRound size={20} /> }] : []),
     { id: 'transmission', label: 'Submission', icon: <Send size={20} />, badge: (totalSubmissions + totalMovements) > 0 ? (totalSubmissions + totalMovements) : undefined },
     { id: 'calendar', label: 'Calendar', icon: <Calendar size={20} />, badge: upcomingInterviews > 0 ? upcomingInterviews : undefined },

@@ -71,7 +71,12 @@ import {
 type TimeRange = '1D' | '7D' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 type ReportTab = 'overview' | 'talent' | 'market';
 
-const TeamManagement: React.FC = () => {
+interface TeamManagementProps {
+  onViewSubmissions?: (recruiterName: string) => void;
+  onViewPipeline?: (recruiterName: string, status?: string) => void;
+}
+
+const TeamManagement: React.FC<TeamManagementProps> = ({ onViewSubmissions, onViewPipeline }) => {
   const { recruiterStats, userRole, addRecruiter, updateRecruiter, removeRecruiter, notify, activities, candidates } = useStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingRecruiter, setEditingRecruiter] = useState<RecruiterStats | null>(null);
@@ -89,6 +94,16 @@ const TeamManagement: React.FC = () => {
   const [logTypeFilter, setLogTypeFilter] = useState('All');
 
   const isOwner = userRole === UserRole.Owner;
+
+  // Date Formatting Helper: MM-DD-YYYY
+  const formatToMMDDYYYY = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "N/A";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
 
   const multipliers: Record<TimeRange, number> = {
     '1D': 0.1, '7D': 0.25, '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'ALL': 18
@@ -182,9 +197,9 @@ const TeamManagement: React.FC = () => {
 
   const handleDeleteRecruiter = (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
-    if (window.confirm(`Are you sure you want to remove operative ${name}? This action is permanent.`)) {
+    if (window.confirm(`Are you sure you want to remove recruiter ${name}? This action is permanent.`)) {
       removeRecruiter(id);
-      notify("Operative Removed", `${name} was purged from agency cloud.`, "warning");
+      notify("Recruiter Removed", `${name} was purged from agency cloud.`, "warning");
     }
   };
 
@@ -196,7 +211,7 @@ const TeamManagement: React.FC = () => {
           <div>
             <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tight">
               <ShieldCheck size={32} className="text-brand-600" />
-              Operative Leaderboard
+              Recruiter Leaderboard
             </h3>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.3em] mt-2">
               Performance metrics: Hires • Movements • Submissions
@@ -217,7 +232,7 @@ const TeamManagement: React.FC = () => {
             </div>
             {isOwner && (
               <button onClick={() => setShowAddModal(true)} className="bg-brand-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-700 transition-all shadow-xl shadow-brand-600/10 flex items-center gap-3">
-                <UserPlus size={18} /> Provision Node
+                <UserPlus size={18} /> Provision Recruiter
               </button>
             )}
           </div>
@@ -228,7 +243,7 @@ const TeamManagement: React.FC = () => {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Rank</th>
-                <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Operative</th>
+                <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Recruiter</th>
                 <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Submission</th>
                 <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Pipeline Movement</th>
                 <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Hires</th>
@@ -254,28 +269,46 @@ const TeamManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-10 py-8 text-center">
-                    <div className="flex flex-col items-center">
-                       <span className="text-2xl font-black tracking-tighter text-slate-900">{recruiter.applications}</span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onViewSubmissions) onViewSubmissions(recruiter.name);
+                      }}
+                      className="flex flex-col items-center group/sub"
+                    >
+                       <span className="text-2xl font-black tracking-tighter text-slate-900 group-hover/sub:text-brand-600 transition-colors underline decoration-slate-200 decoration-4 underline-offset-4 group-hover/sub:decoration-brand-500">{recruiter.applications}</span>
                        <p className="text-[8px] font-black text-slate-300 uppercase mt-1">Submissions</p>
-                    </div>
+                    </button>
                   </td>
                   <td className="px-10 py-8 text-center">
-                    <div className="flex flex-col items-center">
-                      <span className="text-2xl font-black tracking-tighter text-purple-600">{recruiter.stageProgressions}</span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onViewPipeline) onViewPipeline(recruiter.name);
+                      }}
+                      className="flex flex-col items-center group/move"
+                    >
+                      <span className="text-2xl font-black tracking-tighter text-purple-600 group-hover/move:text-purple-700 transition-colors underline decoration-slate-200 decoration-4 underline-offset-4 group-hover/move:decoration-purple-400">{recruiter.stageProgressions}</span>
                       <p className="text-[8px] font-black text-slate-300 uppercase mt-1">Movements</p>
-                    </div>
+                    </button>
                   </td>
                   <td className="px-10 py-8 text-right">
-                    <div className="flex flex-col items-end">
-                      <span className="text-3xl font-black text-emerald-600 tracking-tighter">{recruiter.placements}</span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onViewPipeline) onViewPipeline(recruiter.name, 'Hired');
+                      }}
+                      className="flex flex-col items-end group/hire"
+                    >
+                      <span className="text-3xl font-black text-emerald-600 tracking-tighter group-hover/hire:text-emerald-700 transition-colors underline decoration-slate-200 decoration-4 underline-offset-4 group-hover/hire:decoration-emerald-400">{recruiter.placements}</span>
                       <p className="text-[8px] font-black text-slate-300 uppercase mt-1">Final Hires</p>
-                    </div>
+                    </button>
                   </td>
                   {isOwner && (
                     <td className="px-10 py-8 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingRecruiter(recruiter); }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-brand-600 rounded-2xl shadow-sm transition-all hover:scale-110 active:scale-95" title="Edit Node"><Edit3 size={18} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteRecruiter(e, recruiter.id, recruiter.name); }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-red-600 rounded-2xl shadow-sm transition-all hover:scale-110 active:scale-95" title="Delete Node"><Trash2 size={18} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setEditingRecruiter(recruiter); }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-brand-600 rounded-2xl shadow-sm transition-all hover:scale-110 active:scale-95" title="Edit Recruiter"><Edit3 size={18} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteRecruiter(e, recruiter.id, recruiter.name); }} className="p-3 bg-white border border-slate-200 text-slate-400 hover:text-red-600 rounded-2xl shadow-sm transition-all hover:scale-110 active:scale-95" title="Delete Recruiter"><Trash2 size={18} /></button>
                       </div>
                     </td>
                   )}
@@ -306,7 +339,7 @@ const TeamManagement: React.FC = () => {
                                 <h3 className="text-2xl font-black uppercase tracking-tighter">Forensic Sync Ledger</h3>
                                 <div className="px-3 py-1 bg-white/10 border border-white/5 rounded-lg text-[9px] font-black uppercase tracking-widest text-brand-400">Time Window: {timeRange}</div>
                             </div>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Operative Identifier: {selectedRecruiterReport.name} • Protocol Level 4-A</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Recruiter Identifier: {selectedRecruiterReport.name} • Protocol Level 4-A</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 relative z-10">
@@ -375,7 +408,8 @@ const TeamManagement: React.FC = () => {
                                       </div>
                                       <div>
                                           <p className="text-xl font-black text-slate-900 tracking-tighter">{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
-                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{new Date(log.timestamp).toLocaleDateString()}</p>
+                                          {/* Standardized to MM-DD-YYYY */}
+                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{formatToMMDDYYYY(log.timestamp)}</p>
                                       </div>
                                   </div>
                                   <div className="space-y-2">
@@ -512,7 +546,7 @@ const TeamManagement: React.FC = () => {
                             </div>
                             <div>
                                 <h5 className="text-xl font-black uppercase tracking-tight mb-2">Audit Synchronization</h5>
-                                <p className="text-xs text-slate-400 font-medium leading-relaxed italic pr-4">Review high-density activity logs and communication sequences between this operative and their talent graph.</p>
+                                <p className="text-xs text-slate-400 font-medium leading-relaxed italic pr-4">Review high-density activity logs and communication sequences between this recruiter and their talent graph.</p>
                             </div>
                         </div>
                         <button onClick={() => setShowFullLogs(true)} className="px-8 py-4 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:bg-slate-100 active:scale-95 whitespace-nowrap relative z-10">
@@ -536,7 +570,7 @@ const TeamManagement: React.FC = () => {
                                 <div className="flex items-center gap-6">
                                     <div className="relative">
                                         <img src={cand.avatarUrl} className="w-14 h-14 rounded-2xl object-cover shadow-md border-2 border-white" />
-                                        <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-lg border-2 border-white flex items-center justify-center text-white text-[8px] font-black ${cand.status === 'Rejected' ? 'bg-red-500' : 'bg-brand-600'}`}>{cand.status[0]}</div>
+                                        <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-lg border-2 border-white flex items-center justify-center text-white text-[8px] font-black ${cand.status === 'Rejected' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-brand-600'}`}>{cand.status[0]}</div>
                                     </div>
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
@@ -607,7 +641,7 @@ const TeamManagement: React.FC = () => {
              <form onSubmit={handleAddRecruiter} className="p-8 space-y-6">
                 <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Full Name</label><input type="text" required value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" placeholder="e.g. Jordan Smith" /></div>
                 <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Role / Job Title</label><input type="text" value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" placeholder="e.g. Technical Sourcing Specialist" /></div>
-                <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-all flex items-center justify-center gap-3">{isSubmitting ? 'Initializing...' : 'Confirm & Invite Operative'}</button>
+                <button type="submit" disabled={isSubmitting} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-all flex items-center justify-center gap-3">{isSubmitting ? 'Initializing...' : 'Confirm & Invite Recruiter'}</button>
              </form>
           </div>
         </div>
@@ -620,7 +654,7 @@ const TeamManagement: React.FC = () => {
              <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg"><Edit3 size={20} /></div>
-                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Edit Operative</h3>
+                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Edit Recruiter</h3>
                 </div>
                 <button onClick={() => setEditingRecruiter(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-400"><X size={20} /></button>
              </div>
@@ -633,7 +667,7 @@ const TeamManagement: React.FC = () => {
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">Role / Job Title</label>
                   <input type="text" className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold shadow-inner" value={editingRecruiter.jobTitle || ''} onChange={(e) => setEditingRecruiter({...editingRecruiter, jobTitle: e.target.value})} />
                 </div>
-                <button onClick={() => { updateRecruiter(editingRecruiter.id, editingRecruiter); setEditingRecruiter(null); notify("Success", "Node updated.", "success"); }} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-all flex items-center justify-center gap-3">Save Changes</button>
+                <button onClick={() => { updateRecruiter(editingRecruiter.id, editingRecruiter); setEditingRecruiter(null); notify("Success", "Recruiter updated.", "success"); }} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl transition-all flex items-center justify-center gap-3">Save Changes</button>
              </div>
            </div>
         </div>

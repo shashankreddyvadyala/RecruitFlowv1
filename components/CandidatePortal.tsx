@@ -134,6 +134,16 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
     portfolio: myData.socialLinks?.portfolio || ''
   });
 
+  // Date Formatting Helper: MM-DD-YYYY
+  const formatToMMDDYYYY = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "N/A";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
+
   const handleUpdateProfile = async () => {
     setIsUpdating(true);
     await new Promise(r => setTimeout(r, 1000));
@@ -348,7 +358,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                         <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center"><Video size={20}/></div>
                                         <div>
                                             <h4 className="text-sm font-bold text-slate-900 truncate max-w-[180px]">{int.jobTitle}</h4>
-                                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{new Date(int.startTime).toLocaleDateString()} • {new Date(int.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
+                                            {/* Fix: Standardized to MM-DD-YYYY */}
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{formatToMMDDYYYY(int.startTime)} • {new Date(int.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
                                         </div>
                                     </div>
                                     <button className="text-[10px] font-black text-brand-600 uppercase underline decoration-2">Join</button>
@@ -393,7 +404,8 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                                                 <div className="flex items-center gap-3 mt-1">
                                                     <span className="text-[10px] font-bold text-brand-600 uppercase tracking-widest">{app.company}</span>
                                                     <span className="text-slate-300">•</span>
-                                                    <span className="text-[10px] font-medium text-slate-500 flex items-center gap-1"><Clock size={10}/> Applied {app.appliedDate}</span>
+                                                    {/* Fix: Standardized to MM-DD-YYYY */}
+                                                    <span className="text-[10px] font-medium text-slate-500 flex items-center gap-1"><Clock size={10}/> Applied {formatToMMDDYYYY(app.appliedDate)}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -683,7 +695,7 @@ const CandidatePortal: React.FC<CandidatePortalProps> = ({ onLogout }) => {
                       ) : tailoredMaterials ? (
                           <div className="space-y-8">
                               <div className="bg-slate-900 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-xl">
-                                  <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[80px] opacity-20 -mr-16 -mt-16"></div>
+                                  <div className="absolute top-0 right-0 w-32 h-32 bg-brand-600 rounded-full blur-[60px] opacity-20 -mr-16 -mt-16"></div>
                                   <div className="relative z-10">
                                       <h4 className="text-brand-400 text-[9px] font-black uppercase tracking-[0.3em] mb-4">Neural Trajectory Summary</h4>
                                       <p className="text-base font-medium leading-relaxed italic">{tailoredMaterials.tailoredResumeSummary}</p>

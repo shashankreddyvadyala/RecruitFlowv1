@@ -8,6 +8,16 @@ interface ActivityTimelineProps {
 }
 
 const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities }) => {
+  // Date Formatting Helper: MM-DD-YYYY
+  const formatToMMDDYYYY = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "N/A";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'Email': return <Mail size={14} />;
@@ -50,8 +60,9 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities }) => {
             <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-1">
                 <h4 className="font-bold text-slate-900 text-sm">{activity.subject}</h4>
+                {/* Fix: Standardized to MM-DD-YYYY */}
                 <span className="text-[10px] font-bold text-slate-400">
-                  {new Date(activity.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {formatToMMDDYYYY(activity.timestamp)} • {new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">{activity.content}</p>

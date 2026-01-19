@@ -27,17 +27,20 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
   const { userRole, setUserRole, branding, interviews, notify, activities } = useStore();
   const [currentView, setCurrentView] = useState('dashboard');
   const [transmissionTab, setTransmissionTab] = useState<'submissions' | 'pipeline'>('submissions');
+  const [transmissionSearch, setTransmissionSearch] = useState<string | null>(null);
   const [candidateFilter, setCandidateFilter] = useState<'all' | 'openToWork' | 'passive' | 'hired'>('all');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileComplete, setIsProfileComplete] = useState(false);
+  // Fix: Added 'const' to properly declare notifRef
   const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const checkAlerts = () => {
       const now = new Date();
       interviews.forEach(int => {
-        if (int.status !== 'Scheduled' || int.reminderSent) return;
+        // Fix: Removed reference to non-existent 'reminderSent' property on Interview type
+        if (int.status !== 'Scheduled') return;
         
         const startTime = new Date(int.startTime);
         const diffMs = startTime.getTime() - now.getTime();
@@ -59,6 +62,7 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+        // Fix: notifRef is now correctly defined with const
         if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
             setIsNotifOpen(false);
         }
@@ -83,16 +87,27 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
             onViewCalendar={() => setCurrentView('calendar')} 
             onViewCandidates={() => { setCurrentView('candidates'); setCandidateFilter('all'); }}
             onViewHiredCandidates={() => { setCurrentView('candidates'); setCandidateFilter('hired'); }}
-            onViewSubmissions={() => { setCurrentView('transmission'); setTransmissionTab('submissions'); }}
-            onViewPipeline={() => { setCurrentView('transmission'); setTransmissionTab('pipeline'); }}
+            onViewSubmissions={() => { setCurrentView('transmission'); setTransmissionTab('submissions'); setTransmissionSearch(null); }}
+            onViewPipeline={() => { setCurrentView('transmission'); setTransmissionTab('pipeline'); setTransmissionSearch(null); }}
           />
         );
       case 'transmission':
-        return <TransmissionCenter initialTab={transmissionTab} />;
-      case 'agency-os':
-        return <AgencyDashboard />;
+        return <TransmissionCenter initialTab={transmissionTab} initialRecruiterFilter={transmissionSearch} />;
       case 'team':
-        return <TeamManagement />;
+        return (
+          <TeamManagement 
+            onViewSubmissions={(name) => {
+              setTransmissionSearch(name);
+              setTransmissionTab('submissions');
+              setCurrentView('transmission');
+            }} 
+            onViewPipeline={(name, status) => {
+              setTransmissionSearch(status ? `${name} ${status}` : name);
+              setTransmissionTab('pipeline');
+              setCurrentView('transmission');
+            }}
+          />
+        );
       case 'activity-log':
         return <AgencyActivityLog />;
       case 'calendar':
@@ -128,8 +143,8 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
             onViewCalendar={() => setCurrentView('calendar')} 
             onViewCandidates={() => { setCurrentView('candidates'); setCandidateFilter('all'); }}
             onViewHiredCandidates={() => { setCurrentView('candidates'); setCandidateFilter('hired'); }}
-            onViewSubmissions={() => { setCurrentView('transmission'); setTransmissionTab('submissions'); }}
-            onViewPipeline={() => { setCurrentView('transmission'); setTransmissionTab('pipeline'); }}
+            onViewSubmissions={() => { setCurrentView('transmission'); setTransmissionTab('submissions'); setTransmissionSearch(null); }}
+            onViewPipeline={() => { setCurrentView('transmission'); setTransmissionTab('pipeline'); setTransmissionSearch(null); }}
           />
         );
     }
@@ -146,7 +161,10 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
         currentView={currentView} 
         onChangeView={(view) => { 
           setCurrentView(view); 
-          if(view === 'transmission') setTransmissionTab('submissions'); 
+          if(view === 'transmission') {
+            setTransmissionTab('submissions');
+            setTransmissionSearch(null); // Clear filter when navigating from sidebar
+          }
           if(view === 'candidates') setCandidateFilter('all');
         }} 
       />
@@ -279,55 +297,37 @@ function MainApp({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authView, setAuthView] = useState<'landing' | 'login' | 'signup'>('landing');
-  const [loggedRole, setLoggedRole] = useState<UserRole>(UserRole.Owner);
-
-  const handleLogin = (role: UserRole) => {
-      setLoggedRole(role);
-      setIsLoggedIn(true);
-  };
-
-  const handleLogout = () => {
-      setIsLoggedIn(false);
-      setAuthView('landing');
-  };
-
-  if (!isLoggedIn) {
-    if (authView === 'landing') {
-        return <LandingPage onLogin={() => setAuthView('login')} onSignup={() => setAuthView('signup')} />;
-    }
-    if (authView === 'signup') {
-      return (
-        <SignUpPage 
-          onSignup={() => setIsLoggedIn(true)} 
-          onNavigateToLogin={() => setAuthView('login')} 
-        />
-      );
-    }
-    return (
-      <LoginPage 
-        onLogin={handleLogin} 
-        onNavigateToSignup={() => setAuthView('signup')} 
-      />
-    );
-  }
+// Fix: Added root App component with login logic and default export to fix error in index.tsx
+export default function App() {
+  const [authState, setAuthState] = useState<'landing' | 'login' | 'signup' | 'main'>('landing');
 
   return (
     <StoreProvider>
-      <StoreRoleWrapper role={loggedRole} onLogout={handleLogout} />
+      <AppContent authState={authState} setAuthState={setAuthState} />
     </StoreProvider>
   );
 }
 
-const StoreRoleWrapper = ({ role, onLogout }: { role: UserRole, onLogout: () => void }) => {
-    const { setUserRole } = useStore();
-    React.useEffect(() => {
-        setUserRole(role);
-    }, [role, setUserRole]);
+// Internal routing helper to access store context
+function AppContent({ authState, setAuthState }: { authState: string, setAuthState: React.Dispatch<React.SetStateAction<'landing' | 'login' | 'signup' | 'main'>> }) {
+  const { setUserRole } = useStore();
 
-    return <MainApp onLogout={onLogout} />;
-};
+  const handleLogin = (role: UserRole) => {
+    setUserRole(role);
+    setAuthState('main');
+  };
+  const handleSignup = () => {
+    setUserRole(UserRole.Recruiter);
+    setAuthState('main');
+  };
+  const handleLogout = () => setAuthState('landing');
 
-export default App;
+  return (
+    <>
+      {authState === 'landing' && <LandingPage onLogin={() => setAuthState('login')} onSignup={() => setAuthState('signup')} />}
+      {authState === 'login' && <LoginPage onLogin={handleLogin} onNavigateToSignup={() => setAuthState('signup')} />}
+      {authState === 'signup' && <SignUpPage onSignup={handleSignup} onNavigateToLogin={() => setAuthState('login')} />}
+      {authState === 'main' && <MainApp onLogout={handleLogout} />}
+    </>
+  );
+}

@@ -25,6 +25,16 @@ const AgencyActivityLog: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Date Formatting Helper: MM-DD-YYYY
+  const formatToMMDDYYYY = (date: Date | string) => {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "N/A";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}-${dd}-${yyyy}`;
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'Email': return <Mail size={16} />;
@@ -127,8 +137,9 @@ const AgencyActivityLog: React.FC = () => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     {new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
+                  {/* Fix: Standardized to MM-DD-YYYY */}
                   <p className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">
-                    {new Date(activity.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {formatToMMDDYYYY(activity.timestamp)}
                   </p>
                </div>
 
