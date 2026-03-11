@@ -1,1 +1,10 @@
 
+
+
+[1/5] Loading training data from:
+      abfss://ms@prdatimsstore.dfs.core.windows.net/FACT_TABLES/VMAP_FACT_TABLE
+      Records loaded: 221,763,421
+
+[2/5] Building labels from rules...
+   [RULES] No Excel path set — skipping rules. All invoices go to ML.
+KeyError: 'rule_type'
