@@ -1,1 +1,3 @@
 
+
+[JVM_ATTRIBUTE_NOT_SUPPORTED] Directly accessing the underlying Spark driver JVM using the attribute 'sparkContext' is not supported on serverless compute. If you require direct access to these fields, consider using a single-user cluster. For more details on compatibility and limitations, check: https://learn.microsoft.com/azure/databricks/release-notes/serverless#limitations
