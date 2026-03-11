@@ -1,18 +1,1 @@
 
-
-  Feature matrix: 900,253 rows × 391 features
-   ⚠️  Some classes still have < 2 samples — stratified split disabled
-   Training classes: 335  |  Test rows after class filter: 180,037
-   Training XGBoost...
-TypeError: XGBClassifier.fit() got an unexpected keyword argument 'callbacks'
-[Trace ID: 00-0d5d5d92170508340877be6fe11d5460-8751be84b0f0f172-00]
-File <command-5609998958660723>, line 743
-    740 df_hist = build_labels(df_hist, rules, spark)
-    742 print("\n[3/4] Training models...")
---> 743 xgb, lgb, label_enc, cat_encoders = train_models(df_hist)
-    745 print("\n[4/4] Saving artifacts...")
-    746 save_artifacts(xgb, lgb, label_enc, cat_encoders)
-File /local_disk0/.ephemeral_nfs/envs/pythonEnv-b1816427-a433-4759-848c-9142cb195914/lib/python3.12/site-packages/xgboost/core.py:751, in require_keyword_args.<locals>.throw_if.<locals>.inner_f(*args, **kwargs)
-    749 for k, arg in zip(sig.parameters, args):
-    750     kwargs[k] = arg
---> 751 return func(**kwargs)
