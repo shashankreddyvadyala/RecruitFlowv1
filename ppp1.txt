@@ -1,1 +1,36 @@
+✓ Report generator OK
 
+============================================================
+  TRAINING PIPELINE
+============================================================
+
+[1/4] Loading data from:
+      abfss://atims@prdatimsstore.dfs.core.windows.net/FACT_TABLES/VMAP_FACT_TABLE
+      221,763,421 records
+
+[2/4] Applying rules...
+   [RULES] No Excel path — all invoices go to ML.
+   Rule-matched: 49,750,351 (22.4%)  |  To ML: 172,013,070 (77.6%)
+
+[3/4] Training models...
+   Pulling rule-labeled records...
+   Available: 49,750,351
+   Dropped 88 rows from classes with < 5 samples
+   Sampled to ~300,000 rows for driver memory
+   Training on 299,887 records
+   Embedding 132,739 unique descriptions (from 299,887 rows) with paraphrase-MiniLM-L3-v2...
+
+BertModel LOAD REPORT from: sentence-transformers/paraphrase-MiniLM-L3-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+
+   Feature matrix: 299,887 rows × 391 features
+   ⚠️  Some classes still have < 2 samples — stratified split disabled
+   Training classes: 291  |  Test rows after class filter: 59,974
+   Training XGBoost...
+[0]	validation_0-mlogloss:2.43120
+[100]	validation_0-mlogloss:0.41528
