@@ -1,1 +1,2 @@
-
+TypeError: loop of ufunc does not support argument 0 of type decimal.Decimal which has no callable log1p method
+[Trace ID: 00-b3cb76a591090bd77438d4086730ddea-5c88460dd2c81aa5-00]
