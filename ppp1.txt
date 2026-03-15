@@ -1,1 +1,19 @@
+[50]	validation_0-mlogloss:0.68959
+[100]	validation_0-mlogloss:0.50373
+[150]	validation_0-mlogloss:0.45605
+[200]	validation_0-mlogloss:0.43904
+[250]	validation_0-mlogloss:0.43126
+[299]	validation_0-mlogloss:0.42796
+   XGBoost  → acc=0.8631  f1=0.8540
+   Training LightGBM...
+/local_disk0/.ephemeral_nfs/cluster_libraries/python/lib/python3.10/site-packages/sklearn/utils/validation.py:2749: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/local_disk0/.ephemeral_nfs/cluster_libraries/python/lib/python3.10/site-packages/sklearn/utils/validation.py:2749: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+   LightGBM → acc=0.6604  f1=0.6514
+   Ensemble → acc=0.7930  f1=0.8110
 
+[4/4] Saving artifacts...
+/local_disk0/.ephemeral_nfs/cluster_libraries/python/lib/python3.10/site-packages/sklearn/utils/validation.py:2749: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+OSError: [Errno 95] Operation not supported: '/dbfs/models'
