@@ -1,1 +1,22 @@
 
+ An exception was thrown from the Python worker. Please see the stack trace below.
+Traceback (most recent call last):
+  File <command-5609998958665040>, line 492, in _score_partition
+AttributeError: 'map' object has no attribute 'empty'
+File <command-5609998958665040>, line 737
+    735 # [5] Cluster discovery + report
+    736 print("\n[5/5] Cluster discovery + report...")
+--> 737 df_scored, cluster_summary = discover_new_clusters(df_scored, spark)
+    739 if PATHS.get("prediction_store"):
+    740     out_cols = [
+    741         COLS["invoice_id"], COLS["inv_line_number"], COLS["invoice_num"],
+    742         "final_description", COLS["vendor_name"], COLS["state"],
+   (...)
+    746         "final_pred", "final_conf", "decision_path", "discovery_cluster_id",
+    747     ]
+File <command-5609998958665040>, line 535, in discover_new_clusters(df, spark)
+    533 id_col = COLS["invoice_id"]
+    534 df_ntr = df.filter(col("label_source") == "need_to_review")
+--> 535 ntr_n  = df_ntr.count()
+    536 print(f"   Need-to-review: {ntr_n:,}")
+    538 df_final = df.withColumn("discovery_cluster_id", lit(None).cast("int"))
