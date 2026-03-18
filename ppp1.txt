@@ -1,5 +1,1 @@
-# %pip install --upgrade --force-reinstall \
-#     lightgbm==4.5.0 \
-#     xgboost>=2.0.0 \
-#     scikit-learn>=1.3.0 \
-#     openpyxl>=3.1.0
+ cannot import name 'PYARROW_INSTALLED' from 'lightgbm.compat' (/local_disk0/.ephemeral_nfs/envs/pythonEnv-4edf7119-fe80-49de-9672-c43b3683b793/lib/python3.10/site-packages/lightgbm/compat.py)
