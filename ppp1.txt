@@ -1,1 +1,8 @@
-
+ValueError: all the input array dimensions for the concatenation axis must match exactly, but along dimension 0, the array at index 0 has size 2 and the array at index 2 has size 36203
+File <command-5609998958665040>, line 355
+    352 model = train(df_hist, df_curr_eval=df_curr)
+    353 df_hist.unpersist()
+--> 355 df_predictions = score(df_curr, model)
+    356 df_curr.unpersist()
+    358 print(f"\n✓ DONE")
+File <__array_function__ internals>:180, in concatenate(*args, **kwargs)
