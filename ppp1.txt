@@ -1,1 +1,22 @@
+[NOT_IMPLEMENTED] checkpoint() is not implemented.
+---------------------------------------------------------------------------
+PySparkNotImplementedError                Traceback (most recent call last)
+File <command-5609998958665040>, line 499
+    496 df_scored = classify(df_c, model, spark)
+    497 df_c.unpersist()
+--> 499 df_scored = df_scored.checkpoint(eager=True)
+    501 if PATHS.get("prediction_store"):
+    502     keep = [COLS["invoice_id"],COLS["inv_line_number"],COLS["invoice_num"],
+    503             "final_description",COLS["vendor_name"],COLS["state"],COLS["extc"],
+    504             COLS["mic"],COLS["account_code"],COLS["tran_amount"],COLS["accounting_date"],
+    505             "cluster","rule_matched","label_account_code","label_source",
+    506             "ml_pred","ml_conf","final_pred","confidence","decision"]
 
+File /databricks/spark/python/pyspark/sql/connect/dataframe.py:1725, in DataFrame.__getattr__(self, name)
+   1718     raise PySparkAttributeError(
+   1719         error_class="JVM_ATTRIBUTE_NOT_SUPPORTED", message_parameters={"attr_name": name}
+   1720     )
+   1721 elif name in [
+   1722     "checkpoint",
+   1723     "localCheckpoint",
+   1724 ]:
