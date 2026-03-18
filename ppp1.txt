@@ -1,1 +1,22 @@
-
+parkConnectGrpcException: <_MultiThreadedRendezvous of RPC that terminated with:
+	status = StatusCode.RESOURCE_EXHAUSTED
+	details = "Sent message larger than max (176444952 vs. 134217728)"
+	debug_error_string = "UNKNOWN:Error received from peer unix:///databricks/sparkconnect/grpc.sock {created_time:"2026-03-18T04:45:02.349987624+00:00", grpc_status:8, grpc_message:"Sent message larger than max (176444952 vs. 134217728)"}"
+>
+File <command-5609998958665040>, line 963
+    961 # [5] Cluster discovery + report
+    962 print("\n[5/5] Cluster discovery + report...")
+--> 963 df_scored, cluster_summary = discover_new_clusters(df_scored, spark)
+    965 if PATHS.get("prediction_store"):
+    966     out_cols = [
+    967         COLS["invoice_id"], COLS["inv_line_number"], COLS["invoice_num"],
+    968         "final_description", COLS["vendor_name"], COLS["state"],
+   (...)
+    972         "final_pred", "final_conf", "decision_path", "discovery_cluster_id",
+    973     ]
+File <command-5609998958665040>, line 761, in discover_new_clusters(df, spark)
+    759 id_col = COLS["invoice_id"]
+    760 df_ntr = df.filter(col("label_source") == "need_to_review")
+--> 761 ntr_n  = df_ntr.count()
+    762 print(f"   Need-to-review: {ntr_n:,}")
+    764 df_final = df.withColumn("discovery_cluster_id", lit(None).cast("int"))
