@@ -1,1 +1,12 @@
 
+ XGBClassifier.fit() got an unexpected keyword argument 'early_stopping_rounds'
+File <command-5609998958665040>, line 433
+    431 # [3] Train
+    432 print(f"\n[3/4] Training...")
+--> 433 model = train_models(df_h, df_curr=df_c)
+    434 df_h.unpersist()
+    436 # [4] Classify + checkpoint + report
+File /local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/xgboost/core.py:751, in require_keyword_args.<locals>.throw_if.<locals>.inner_f(*args, **kwargs)
+    749 for k, arg in zip(sig.parameters, args):
+    750     kwargs[k] = arg
+--> 751 return func(**kwargs)
