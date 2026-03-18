@@ -1,47 +1,5 @@
-Unexpected exception formatting exception. Falling back to standard exception
-Traceback (most recent call last):
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/interactiveshell.py", line 3508, in run_code
-    exec(code_obj, self.user_global_ns, self.user_ns)
-  File "/home/spark-4edf7119-fe80-49de-9672-c4/.ipykernel/2543/command-5609998958660625-4255651335", line 7, in <module>
-    import lightgbm as lgb_lib
-  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-4edf7119-fe80-49de-9672-c43b3683b793/lib/python3.10/site-packages/lightgbm/__init__.py", line 8, in <module>
-    from .basic import Booster, Dataset, Sequence, register_logger
-  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-4edf7119-fe80-49de-9672-c43b3683b793/lib/python3.10/site-packages/lightgbm/basic.py", line 21, in <module>
-    from .libpath import find_lib_path
-ImportError: cannot import name 'find_lib_path' from 'lightgbm.libpath' (/local_disk0/.ephemeral_nfs/envs/pythonEnv-4edf7119-fe80-49de-9672-c43b3683b793/lib/python3.10/site-packages/lightgbm/libpath.py)
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/interactiveshell.py", line 2105, in showtraceback
-    stb = self.InteractiveTB.structured_traceback(
-  File "/databricks/python_shell/lib/dbruntime/ipykernel_patches/ultratb_patch.py", line 36, in patched_structured_traceback
-    return orig_structured_traceback(self_, *args, **kwargs)
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/ultratb.py", line 1428, in structured_traceback
-    return FormattedTB.structured_traceback(
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/ultratb.py", line 1319, in structured_traceback
-    return VerboseTB.structured_traceback(
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/ultratb.py", line 1172, in structured_traceback
-    formatted_exception = self.format_exception_as_a_whole(etype, evalue, etb, number_of_lines_of_context,
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/ultratb.py", line 1087, in format_exception_as_a_whole
-    frames.append(self.format_record(record))
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/ultratb.py", line 969, in format_record
-    frame_info.lines, Colors, self.has_colors, lvals
-  File "/databricks/python/lib/python3.10/site-packages/IPython/core/ultratb.py", line 792, in lines
-    return self._sd.lines
-  File "/databricks/python/lib/python3.10/site-packages/stack_data/utils.py", line 145, in cached_property_wrapper
-    value = obj.__dict__[self.func.__name__] = self.func(obj)
-  File "/databricks/python/lib/python3.10/site-packages/stack_data/core.py", line 698, in lines
-    pieces = self.included_pieces
-  File "/databricks/python/lib/python3.10/site-packages/stack_data/utils.py", line 145, in cached_property_wrapper
-    value = obj.__dict__[self.func.__name__] = self.func(obj)
-  File "/databricks/python/lib/python3.10/site-packages/stack_data/core.py", line 649, in included_pieces
-    pos = scope_pieces.index(self.executing_piece)
-  File "/databricks/python/lib/python3.10/site-packages/stack_data/utils.py", line 145, in cached_property_wrapper
-    value = obj.__dict__[self.func.__name__] = self.func(obj)
-  File "/databricks/python/lib/python3.10/site-packages/stack_data/core.py", line 628, in executing_piece
-    return only(
-  File "/databricks/python/lib/python3.10/site-packages/executing/executing.py", line 164, in only
-    raise NotOneValueFound('Expected one value, found 0')
-executing.executing.NotOneValueFound: Expected one value, found 0
-ImportError: cannot import name 'find_lib_path' from 'lightgbm.libpath' (/local_disk0/.ephemeral_nfs/envs/pythonEnv-4edf7119-fe80-49de-9672-c43b3683b793/lib/python3.10/site-packages/lightgbm/libpath.py)
+# %pip install --upgrade --force-reinstall \
+#     lightgbm==4.5.0 \
+#     xgboost>=2.0.0 \
+#     scikit-learn>=1.3.0 \
+#     openpyxl>=3.1.0
