@@ -1,1 +1,101 @@
+PythonException: 
+  An exception was thrown from the Python worker. Please see the stack trace below.
+Traceback (most recent call last):
+  File "/databricks/spark/python/pyspark/serializers.py", line 193, in _read_with_length
+    return self.loads(obj)
+  File "/databricks/spark/python/pyspark/serializers.py", line 571, in loads
+    return cloudpickle.loads(obj, encoding=encoding)
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/__init__.py", line 73, in <module>
+    from .base import clone  # noqa: E402
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/base.py", line 19, in <module>
+    from .utils._metadata_requests import _MetadataRequester, _routing_enabled
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/__init__.py", line 9, in <module>
+    from ._chunking import gen_batches, gen_even_slices
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/_chunking.py", line 11, in <module>
+    from ._param_validation import Interval, validate_params
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/_param_validation.py", line 17, in <module>
+    from .validation import _is_arraylike_not_scalar
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/validation.py", line 21, in <module>
+    from ..utils._array_api import _asarray_with_order, _is_numpy_namespace, get_namespace
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/_array_api.py", line 20, in <module>
+    from .fixes import parse_version
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/fixes.py", line 20, in <module>
+    import pandas as pd
+  File "/databricks/python/lib/python3.10/site-packages/pandas/__init__.py", line 22, in <module>
+    from pandas.compat import is_numpy_dev as _is_numpy_dev  # pyright: ignore # noqa:F401
+  File "/databricks/python/lib/python3.10/site-packages/pandas/compat/__init__.py", line 18, in <module>
+    from pandas.compat.numpy import (
+  File "/databricks/python/lib/python3.10/site-packages/pandas/compat/numpy/__init__.py", line 4, in <module>
+    from pandas.util.version import Version
+  File "/databricks/python/lib/python3.10/site-packages/pandas/util/__init__.py", line 2, in <module>
+    from pandas.util._decorators import (  # noqa:F401
+  File "/databricks/python/lib/python3.10/site-packages/pandas/util/_decorators.py", line 14, in <module>
+    from pandas._libs.properties import cache_readonly
+  File "/databricks/python/lib/python3.10/site-packages/pandas/_libs/__init__.py", line 13, in <module>
+    from pandas._libs.interval import Interval
+  File "pandas/_libs/interval.pyx", line 1, in init pandas._libs.interval
+ValueError: numpy.dtype size changed, may indicate binary incompatibility. Expected 96 from C header, got 88 from PyObject
 
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/databricks/spark/python/pyspark/worker.py", line 1866, in main
+    func, profiler, deserializer, serializer = read_udfs(pickleSer, infile, eval_type)
+  File "/databricks/spark/python/pyspark/worker.py", line 1543, in read_udfs
+    arg_offsets, udf = read_single_udf(pickleSer, infile, eval_type, runner_conf, udf_index=0)
+  File "/databricks/spark/python/pyspark/worker.py", line 737, in read_single_udf
+    f, return_type = read_command(pickleSer, infile)
+  File "/databricks/spark/python/pyspark/worker_util.py", line 68, in read_command
+    command = serializer._read_with_length(file)
+  File "/databricks/spark/python/pyspark/serializers.py", line 197, in _read_with_length
+    raise SerializationError("Caused by " + traceback.format_exc())
+pyspark.serializers.SerializationError: Caused by Traceback (most recent call last):
+  File "/databricks/spark/python/pyspark/serializers.py", line 193, in _read_with_length
+    return self.loads(obj)
+  File "/databricks/spark/python/pyspark/serializers.py", line 571, in loads
+    return cloudpickle.loads(obj, encoding=encoding)
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/__init__.py", line 73, in <module>
+    from .base import clone  # noqa: E402
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/base.py", line 19, in <module>
+    from .utils._metadata_requests import _MetadataRequester, _routing_enabled
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/__init__.py", line 9, in <module>
+    from ._chunking import gen_batches, gen_even_slices
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/_chunking.py", line 11, in <module>
+    from ._param_validation import Interval, validate_params
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/_param_validation.py", line 17, in <module>
+    from .validation import _is_arraylike_not_scalar
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/validation.py", line 21, in <module>
+    from ..utils._array_api import _asarray_with_order, _is_numpy_namespace, get_namespace
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/_array_api.py", line 20, in <module>
+    from .fixes import parse_version
+  File "/local_disk0/.ephemeral_nfs/envs/pythonEnv-18948a58-9d91-46cf-9136-ee25acec387a/lib/python3.10/site-packages/sklearn/utils/fixes.py", line 20, in <module>
+    import pandas as pd
+  File "/databricks/python/lib/python3.10/site-packages/pandas/__init__.py", line 22, in <module>
+    from pandas.compat import is_numpy_dev as _is_numpy_dev  # pyright: ignore # noqa:F401
+  File "/databricks/python/lib/python3.10/site-packages/pandas/compat/__init__.py", line 18, in <module>
+    from pandas.compat.numpy import (
+  File "/databricks/python/lib/python3.10/site-packages/pandas/compat/numpy/__init__.py", line 4, in <module>
+    from pandas.util.version import Version
+  File "/databricks/python/lib/python3.10/site-packages/pandas/util/__init__.py", line 2, in <module>
+    from pandas.util._decorators import (  # noqa:F401
+  File "/databricks/python/lib/python3.10/site-packages/pandas/util/_decorators.py", line 14, in <module>
+    from pandas._libs.properties import cache_readonly
+  File "/databricks/python/lib/python3.10/site-packages/pandas/_libs/__init__.py", line 13, in <module>
+    from pandas._libs.interval import Interval
+  File "pandas/_libs/interval.pyx", line 1, in init pandas._libs.interval
+ValueError: numpy.dtype size changed, may indicate binary incompatibility. Expected 96 from C header, got 88 from PyObject
+
+File <command-5609998958665040>, line 545
+    539     (df_scored.select([c for c in keep if c in df_scored.columns])
+    540               .write.format("delta").mode("append")
+    541               .partitionBy(COLS["accounting_date"])
+    542               .save(PATHS["prediction_store"]))
+    543     print("  Written to prediction store.")
+--> 545 result = report(df_scored, INVOICE_MONTH or "all")
+    546 print(f"\nDONE → {result}")
+File <command-5609998958665040>, line 424, in report(df, month)
+    421 ts   = datetime.now().strftime("%Y%m%d_%H%M")
+    422 path = f"/tmp/AP_Tax_{month}_{ts}.xlsx"
+--> 424 cnts  = df.groupBy("label_source").agg(count("*").alias("n")).toPandas()
+    425 total = int(cnts["n"].sum())
+    426 def _n(s): return int(cnts.loc[cnts["label_source"]==s,"n"].sum()) if s in cnts["label_source"].values else 0
