@@ -1,1 +1,15 @@
-
+TypeError: unhashable type: 'numpy.ndarray'
+File <command-5609998958665040>, line 344
+    341 model = train(df_hist, df_curr_eval=df_curr)
+    342 df_hist.unpersist()
+--> 344 df_predictions = score(df_curr, model)
+    345 df_curr.unpersist()
+    347 print(f"\n✓ DONE")
+File <command-5609998958665040>, line 172, in <listcomp>(.0)
+    170         enc   = _cat_enc[c]
+    171         known = set(enc.classes_)
+--> 172         vals  = np.array([v if v in known else "UNKNOWN" for v in vals])
+    173     parts.append(enc.transform(vals).reshape(-1, 1).astype(np.float32))
+    175 vh = pdf[COLS["vendor_name"]].fillna("").apply(
+    176      lambda n: int(hashlib.md5(str(n).encode()).hexdigest(), 16) % 2000
+    177 ).values.reshape(-1, 1).astype(np.float32)
