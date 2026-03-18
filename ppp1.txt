@@ -1,15 +1,362 @@
-TypeError: unhashable type: 'numpy.ndarray'
-File <command-5609998958665040>, line 344
-    341 model = train(df_hist, df_curr_eval=df_curr)
-    342 df_hist.unpersist()
---> 344 df_predictions = score(df_curr, model)
-    345 df_curr.unpersist()
-    347 print(f"\n✓ DONE")
-File <command-5609998958665040>, line 172, in <listcomp>(.0)
-    170         enc   = _cat_enc[c]
-    171         known = set(enc.classes_)
---> 172         vals  = np.array([v if v in known else "UNKNOWN" for v in vals])
-    173     parts.append(enc.transform(vals).reshape(-1, 1).astype(np.float32))
-    175 vh = pdf[COLS["vendor_name"]].fillna("").apply(
-    176      lambda n: int(hashlib.md5(str(n).encode()).hexdigest(), 16) % 2000
-    177 ).values.reshape(-1, 1).astype(np.float32)
+# ================================================================================
+# AP TAX CLASSIFICATION — SIMPLE VERSION
+# Output: pandas DataFrame  "df_predictions"  — display it, filter it, done.
+# ================================================================================
+
+
+# ================================================================================
+# CELL 1 — INSTALL  (run alone, then detach + re-attach cluster)
+# ================================================================================
+# %pip install xgboost scikit-learn openpyxl
+# NOTE: do NOT add lightgbm — Databricks pre-installs it and pip breaks it
+
+
+# ================================================================================
+# CELL 2 — IMPORTS
+# ================================================================================
+import hashlib
+import numpy as np
+import pandas as pd
+from xgboost import XGBClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score
+from scipy.sparse import hstack as sp_hstack, csr_matrix
+
+from pyspark.sql.functions import col, when, lit, lower, concat_ws, coalesce, count
+from pyspark.sql.window import Window
+from pyspark.sql.functions import row_number
+
+print("Imports OK")
+
+
+# ================================================================================
+# CELL 3 — CONFIG  ← only edit here
+# ================================================================================
+INVOICE_MONTH = "2022-01"   # month to classify — "YYYY-MM"
+
+INVOICE_PATH  = "abfss://atims@prdatimsstore.dfs.core.windows.net/FACT_TABLES/VMAP_FACT_TABLE"
+
+# ── SAMPLE MODE ──────────────────────────────────────────────────────────────
+# Set to a number to run on a small slice for testing. Set to None for full run.
+SAMPLE_LIMIT  = 50_000   # 50k rows loads in seconds — enough to test everything
+
+COLS = {
+    "invoice_id":           "INVOICE_ID",
+    "accounting_date":      "ACCOUNTING_DATE",
+    "line_description":     "LINE_DESCRIPTION",
+    "description":          "DESCRIPTION",
+    "dist_all_description": "DIST_ALL_DESCRIPTION",
+    "extc":                 "EXTC_CODE",
+    "mic":                  "MIC",
+    "account_code":         "ACCOUNT_CODE",
+    "vendor_name":          "VENDOR_NAME",
+    "company_code":         "COMPANY_CODE",
+    "state":                "STATE",
+    "invoice_source":       "INVOICE_SOURCE",
+    "tran_amount":          "TRAN_AMOUNT",
+}
+
+MAX_ROWS_PER_CLASS   = 5_000   # training cap per account code
+MIN_CLASS_SAMPLES    = 10      # drop account codes with fewer rows
+CONFIDENCE_THRESHOLD = 0.60    # below this → "need_review"
+CAT_COLS = ["EXTC_CODE", "MIC", "COMPANY_CODE", "STATE", "INVOICE_SOURCE"]
+
+spark.conf.set("spark.driver.maxResultSize", "4g")
+print("Config OK")
+
+
+# ================================================================================
+# CELL 4 — RULES ENGINE
+# ================================================================================
+def _assign(df, cond, cluster, label):
+    return (df.withColumn("cluster",      when(cond, lit(cluster)).otherwise(col("cluster")))
+              .withColumn("rule_matched", when(cond, lit(label)).otherwise(col("rule_matched"))))
+
+def _contains(*kws):
+    if not kws: return lit(False)
+    c = lower(col("final_description")).like(f"%{kws[0].lower()}%")
+    for k in kws[1:]: c = c | lower(col("final_description")).like(f"%{k.lower()}%")
+    return c
+
+def build_labels(df):
+    # Build final_description from raw columns
+    filler = ["SCM Purchase", "SCM PURCHASE", "scm purchase"]
+    def _clean(c): return when(col(c).isin(filler) | col(c).isNull(), lit(None)).otherwise(col(c))
+    df = (df.withColumn("_l", _clean(COLS["line_description"]))
+            .withColumn("_d", _clean(COLS["description"]))
+            .withColumn("_x", _clean(COLS["dist_all_description"])))
+    df = df.withColumn("final_description", coalesce(
+        when(col("_l").isNotNull() & col("_d").isNotNull(), concat_ws(" ", col("_l"), col("_d"))),
+        col("_l"), col("_d"), col("_x"), lit("")
+    )).drop("_l", "_d", "_x")
+
+    df = df.withColumn("cluster",      lit(None).cast("string"))
+    df = df.withColumn("rule_matched", lit(None).cast("string"))
+
+    # Field-based rules
+    M=COLS["mic"]; E=COLS["extc"]; A=COLS["account_code"]; V=COLS["vendor_name"]; CO=COLS["company_code"]
+    df = _assign(df, col(M)=="SW",                              "ERTU",                              "mic=SW")
+    df = _assign(df, col(M).isin(["CPEMIS","CPERTR"]),          "CPE",                               "mic=CPE")
+    df = _assign(df, col(M)=="CEQ",                             "Computer Equipments",               "mic=CEQ")
+    df = _assign(df, col(M).isin(["COE10K","CHROR1K"]),         "Miscellaneous Materials - Telecom", "mic=COE10K")
+    df = _assign(df, col(M).like("SEQ%"),                       "Network Equipment",                 "mic=SEQ")
+    df = _assign(df, col(M).like("NEQ%"),                       "Network Equipment",                 "mic=NEQ")
+    df = _assign(df, col(M).like("TOWER%"),                     "Tower Materials",                   "mic=TOWER")
+    df = _assign(df, col(M).like("CEQ%"),                       "Telecom Equipment",                 "mic=CEQ%")
+    df = _assign(df, col(M).like("FBR%") & col(M).like("%K"),  "Telecom Equipment",                 "mic=FBR%K")
+    df = _assign(df, col(M).like("ANT%") & col(M).like("%K"),  "Communications Equipment",          "mic=ANT%K")
+    df = _assign(df, col(E)=="48C",                             "Freight - Common Carrier Charges",  "extc=48C")
+    df = _assign(df, col(E)=="89Q",                             "Research and Development",          "extc=89Q")
+    df = _assign(df, col(E).like("894%"),                       "Permits",                           "extc=894%")
+    df = _assign(df, (col(E)=="520") & col(M).isin(["COE1K","COEOTHER"]), "Miscellaneous Materials - Telecom", "extc=520+mic")
+    df = _assign(df, (col(M)=="COEOTHER") & (col(E)=="450"),    "Contract plant labor",              "mic=COE+extc=450")
+    df = _assign(df, (col(M)=="COEOTHER") & (col(E)=="460"),    "Vendor Engineering",                "mic=COE+extc=460")
+    df = _assign(df, col(M).like("EFI%") & (col(E)=="450"),     "Contract plant labor",              "mic=EFI+extc=450")
+    df = _assign(df, (col(M)=="CPEMIS") & (col(E)=="48C"),      "Freight",                           "mic=CPEMIS+extc=48C")
+    df = _assign(df, (col(E)=="520") & col(A).like("%M"),       "Maintenance",                       "extc=520+acct=%M")
+    df = _assign(df, col(A).like("1130%"),                      "Nontaxable",                        "acct=1130%")
+    df = _assign(df, col(A).isin(["1220.121","1220.147"]),      "Inventory",                         "acct=1220.x")
+    df = _assign(df, col(A).like("4010%") & ~_contains("freight charges"), "Inventory",             "acct=4010%")
+    df = _assign(df, (col(A)=="6124.570M") & (col(E)=="6A9"),   "Operating Lease",                   "acct+extc=6A9")
+    df = _assign(df, (col(A)=="399C") & (col(E)=="61J"),        "Software - ERTU",                   "acct=399C")
+    df = _assign(df, col(A)=="6114.1",                          "Tools and Testing Equipment",       "acct=6114.1")
+    df = _assign(df, (col(E)=="450") & (col(A)=="2003.85C"),    "Outside Plant Construction",        "extc=450+acct=2003")
+    df = _assign(df, (col(E)=="460") & (col(A)=="2003.85C"),    "Outside Plant Construction",        "extc=460+acct=2003")
+    df = _assign(df, col(CO)=="7M39",                           "DTV",                               "co=7M39")
+    for vendor, cluster in {
+        "IRON MOUNTAIN":"Storage Services", "DIVERSIFIED WIRE & CABLE":"Cable - Nonmetalic",
+        "CISCO SYSTEMS CAPITAL":"Capital Lease", "TEKSYSTEMS INC":"Data Processing",
+        "HIGHTOWERS PETROLEUM":"Propane / Fuels", "AMERICAN SAFETY UTILITY":"Safety Equipment",
+        "SAF T GARD INTERNATIONAL":"Safety Equipment", "STANLEY CONVERGENT":"Security Service",
+        "CANTEEN ONE":"Food/Beverage", "ARAMARK REFRESHMENT":"Food/Beverage",
+    }.items():
+        df = _assign(df, col(V).like(f"%{vendor}%"), cluster, f"vendor={vendor[:20]}")
+
+    # label_account_code = ACCOUNT_CODE (no mapping file for now)
+    df = df.withColumn("label_account_code", col(COLS["account_code"]))
+    df = df.withColumn("label_source",
+             when(col("cluster").isNotNull(), lit("rule")).otherwise(lit("no_rule")))
+
+    cnts   = df.groupBy("label_source").agg(count("*").alias("n")).toPandas()
+    total  = int(cnts["n"].sum())
+    rule_n = int(cnts.loc[cnts["label_source"]=="rule","n"].sum()) if total else 0
+    if total:
+        print(f"  Rule-matched: {rule_n:,} ({rule_n/total*100:.1f}%)   To ML: {total-rule_n:,}")
+    return df
+
+print("Rules engine OK")
+
+
+# ================================================================================
+# CELL 5 — FEATURES
+# ================================================================================
+_tfidf   = None
+_cat_enc = None
+
+def _features(pdf, fit=False):
+    global _tfidf, _cat_enc
+    texts = pdf["final_description"].fillna("").astype(str).tolist()
+    if fit:
+        _tfidf   = TfidfVectorizer(max_features=5_000, ngram_range=(1,2), sublinear_tf=True, min_df=2)
+        X_text   = _tfidf.fit_transform(texts)
+        _cat_enc = {}
+    else:
+        X_text = _tfidf.transform(texts)
+
+    parts = []
+    for c in CAT_COLS:
+        vals = pdf[c].fillna("UNKNOWN").apply(lambda x: str(x) if not isinstance(x, (list, np.ndarray)) else "UNKNOWN").values
+        if fit:
+            enc = LabelEncoder()
+            enc.fit(np.append(vals, "UNKNOWN"))
+            _cat_enc[c] = enc
+        else:
+            enc   = _cat_enc[c]
+            known = set(enc.classes_)
+            vals  = np.array([str(v) if str(v) in known else "UNKNOWN" for v in vals])
+        parts.append(enc.transform(vals).reshape(-1, 1).astype(np.float32))
+
+    vh = pdf[COLS["vendor_name"]].fillna("").apply(
+         lambda n: int(hashlib.md5(str(n).encode()).hexdigest(), 16) % 2000
+    ).values.reshape(-1, 1).astype(np.float32)
+    am = np.log1p(np.abs(pd.to_numeric(pdf[COLS["tran_amount"]], errors="coerce").fillna(0).values)).reshape(-1, 1).astype(np.float32)
+    return sp_hstack([X_text, csr_matrix(np.hstack(parts + [vh, am]))], format="csr")
+
+print("Features OK")
+
+
+# ================================================================================
+# CELL 6 — TRAIN
+# ================================================================================
+def train(df_hist, df_curr_eval=None):
+    global _label_enc
+    sel   = ["final_description", "label_account_code"] + CAT_COLS + [COLS["vendor_name"], COLS["tran_amount"]]
+    avail = [c for c in sel if c in df_hist.columns]
+
+    df_lbl = df_hist.filter(col("label_source")=="rule").select(avail).dropna(subset=["label_account_code"])
+
+    cnts  = df_lbl.groupBy("label_account_code").agg(count("*").alias("n")).toPandas()
+    valid = cnts.loc[cnts["n"] >= MIN_CLASS_SAMPLES, "label_account_code"].tolist()
+    print(f"  {int(cnts['n'].sum()):,} labeled rows  |  {len(valid)} classes")
+
+    # Stratified sample — max MAX_ROWS_PER_CLASS per class, single Spark job
+    w   = Window.partitionBy("label_account_code").orderBy(lit(1))
+    pdf = (df_lbl.filter(col("label_account_code").isin(valid))
+                 .withColumn("_r", row_number().over(w))
+                 .filter(col("_r") <= MAX_ROWS_PER_CLASS)
+                 .drop("_r")
+                 .toPandas())
+    print(f"  Training on {len(pdf):,} rows")
+
+    _label_enc = LabelEncoder()
+    y = _label_enc.fit_transform(pdf["label_account_code"].astype(str))
+    X = _features(pdf, fit=True)
+    print(f"  Feature matrix: {X.shape[0]:,} × {X.shape[1]:,}")
+    del pdf
+
+    # Eval set — current month rule rows (out-of-time test), capped to 500/class
+    pdf_ev = pd.DataFrame()   # initialise — populated below if df_curr_eval is set
+    if df_curr_eval is not None:
+        avail_c = [c for c in sel if c in df_curr_eval.columns]
+        w2      = Window.partitionBy("label_account_code").orderBy(lit(1))
+        pdf_ev  = (df_curr_eval.filter(col("label_source")=="rule")
+                               .select(avail_c).dropna(subset=["label_account_code"])
+                               .withColumn("_r", row_number().over(w2))
+                               .filter(col("_r") <= 500).drop("_r")
+                               .toPandas())
+        known   = set(_label_enc.classes_)
+        pdf_ev  = pdf_ev[pdf_ev["label_account_code"].astype(str).isin(known)]
+
+    if df_curr_eval is None or len(pdf_ev) == 0:
+        # Fallback: 10% holdout from historical
+        n   = X.shape[0]
+        idx = np.random.RandomState(42).permutation(n)
+        cut = int(n * 0.9)
+        X, X_ev = X[idx[:cut]], X[idx[cut:]]
+        y, y_ev = y[idx[:cut]], y[idx[cut:]]
+        eval_lbl = "10% historical holdout"
+    else:
+        X_ev     = _features(pdf_ev, fit=False)
+        y_ev     = _label_enc.transform(pdf_ev["label_account_code"].astype(str).values)
+        eval_lbl = f"current month out-of-time ({len(y_ev):,} rows)"
+        del pdf_ev
+
+    n_classes = len(_label_enc.classes_)
+    print(f"  Eval: {eval_lbl}  |  {n_classes} classes")
+    print("  Training XGBoost...")
+
+    model = XGBClassifier(
+        n_estimators=150, max_depth=6, learning_rate=0.1,
+        subsample=0.8, colsample_bytree=0.8,
+        eval_metric="mlogloss", tree_method="hist", grow_policy="lossguide",
+        objective="multi:softprob", random_state=42, n_jobs=-1,
+    )
+    model.fit(X, y, eval_set=[(X_ev, y_ev)], verbose=50)
+    acc = accuracy_score(y_ev, np.argmax(model.predict_proba(X_ev), 1))
+    print(f"  Accuracy: {acc:.4f}")
+    return model
+
+print("Train OK")
+
+
+# ================================================================================
+# CELL 7 — SCORE  (everything on driver — no executor sklearn issues)
+# ================================================================================
+def score(df, model):
+    """Pull all current-month rows to driver, score, return pandas DataFrame."""
+    sel   = [COLS["invoice_id"], "final_description", "label_source",
+             "label_account_code", "cluster", "rule_matched"] + CAT_COLS + \
+            [COLS["vendor_name"], COLS["tran_amount"], COLS["extc"],
+             COLS["mic"], COLS["state"], COLS["account_code"]]
+    avail = [c for c in sel if c in df.columns]
+
+    print("  Pulling current month to driver...")
+    pdf = df.select(avail).toPandas()
+    print(f"  {len(pdf):,} rows loaded")
+
+    # Rule-matched rows — prediction = rule cluster, confidence = 1.0
+    rule_mask  = pdf["label_source"] == "rule"
+    ml_mask    = ~rule_mask
+
+    pdf["predicted_account_code"] = None
+    pdf["confidence"]             = None
+    pdf["decision"]               = None
+
+    pdf.loc[rule_mask, "predicted_account_code"] = pdf.loc[rule_mask, "label_account_code"]
+    pdf.loc[rule_mask, "confidence"]             = 1.0
+    pdf.loc[rule_mask, "decision"]               = "rule"
+
+    # ML rows — score with XGBoost
+    if ml_mask.sum() > 0:
+        pdf_ml = pdf.loc[ml_mask].copy()
+        X      = _features(pdf_ml, fit=False)
+        prob   = model.predict_proba(X)
+        idx    = np.argmax(prob, 1)
+        conf   = prob[np.arange(len(prob)), idx]
+        preds  = _label_enc.inverse_transform(idx)
+
+        pdf.loc[ml_mask, "predicted_account_code"] = list(preds)
+        pdf.loc[ml_mask, "confidence"]             = list(conf)
+        pdf.loc[ml_mask, "decision"]               = np.where(conf >= CONFIDENCE_THRESHOLD, "ml", "need_review").tolist()
+
+    # Summary
+    vc = pdf["decision"].value_counts()
+    print(f"  Results:")
+    for k, v in vc.items():
+        print(f"    {k:<15} {v:>10,}  ({v/len(pdf)*100:.1f}%)")
+    print(f"    {'TOTAL':<15} {len(pdf):>10,}")
+
+    return pdf
+
+print("Score OK")
+
+
+# ================================================================================
+# CELL 8 — RUN
+# ================================================================================
+import datetime as _dt
+
+print("=" * 50)
+print("  AP TAX PIPELINE")
+print("=" * 50)
+
+# Date range for current month
+_yr, _mo = int(INVOICE_MONTH.split("-")[0]), int(INVOICE_MONTH.split("-")[1])
+_start   = f"{INVOICE_MONTH}-01"
+_end     = f"{(_dt.date(_yr,_mo,1)+_dt.timedelta(days=32)).replace(day=1).strftime('%Y-%m')}-01"
+print(f"  Month: {INVOICE_MONTH}  ({_start} to {_end})")
+
+# [1] Historical — train on everything BEFORE current month
+print("\n[1/3] Loading historical data (training)...")
+df_hist = (spark.read.format("delta").load(INVOICE_PATH)
+                .filter(col(COLS["accounting_date"]) < _start))
+if SAMPLE_LIMIT:
+    df_hist = df_hist.limit(SAMPLE_LIMIT)
+    print(f"  SAMPLE MODE: limited to {SAMPLE_LIMIT:,} historical rows")
+df_hist = build_labels(df_hist)
+df_hist.cache(); df_hist.count()
+
+# [2] Current month — eval + scoring
+print(f"\n[2/3] Loading current month ({INVOICE_MONTH})...")
+df_curr = (spark.read.format("delta").load(INVOICE_PATH)
+                .filter((col(COLS["accounting_date"]) >= _start) &
+                        (col(COLS["accounting_date"]) <  _end)))
+if SAMPLE_LIMIT:
+    df_curr = df_curr.limit(SAMPLE_LIMIT)
+    print(f"  SAMPLE MODE: limited to {SAMPLE_LIMIT:,} current month rows")
+df_curr = build_labels(df_curr)
+df_curr.cache(); df_curr.count()
+
+# [3] Train + score
+print("\n[3/3] Training + scoring...")
+model = train(df_hist, df_curr_eval=df_curr)
+df_hist.unpersist()
+
+df_predictions = score(df_curr, model)
+df_curr.unpersist()
+
+print(f"\n✓ DONE")
+print(f"  df_predictions  — {len(df_predictions):,} rows, {len(df_predictions.columns)} columns")
+print(f"  Columns: {list(df_predictions.columns)}")
+df_predictions.head(10)
