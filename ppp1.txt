@@ -1,1 +1,12 @@
 
+
+INVOICE_MONTH = "2022-01"   # YYYY-MM for current month, "" for all
+
+PATHS = {
+    "daily_invoices":   "abfss://atims@prdatimsstore.dfs.core.windows.net/FACT_TABLES/VMAP_FACT_TABLE",
+    # "historical_labeled": "abfss://...",   # separate historical table (optional)
+    # "cluster_rules_excel":"abfss://...",   # Cluster_Rules.xlsx (optional)
+    # "cluster_account_map":"abfss://...",   # cluster→account CSV (optional)
+    # "prediction_store":   "abfss://...",   # where to write results (optional)
+    # "reports_output":     "abfss://...",   # where to save Excel (optional, default /tmp/)
+}
