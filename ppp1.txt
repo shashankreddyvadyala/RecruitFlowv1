@@ -1,1 +1,1418 @@
+# =============================================================================
+# AP TAX CLASSIFICATION  —  CLUSTER PREDICTION
+# =============================================================================
+#
+# PURPOSE
+#   Assign every AP invoice line to a tax cluster name (e.g. "Utilities",
+#   "Outside Plant Construction", "Freight - Common Carrier Charges").
+#   The cluster determines how the invoice is taxed.
+#
+# HOW IT WORKS  (three layers, in priority order)
+#   1. Parker Volpe Rules  — company-specific vendor / description / EXTC combos
+#   2. Generic Rules       — field-based: MIC code, EXTC code, Account code, Vendor
+#   3. Keyword Rules       — description text search (least specific, fires last)
+#   If no rule matches → XGBoost ML predicts the cluster.
+#
+# OUTPUT COLUMN  "decision"
+#   "rule"        → matched a business rule   (confidence = 1.0)
+#   "ml"          → ML prediction ≥ 0.60 confidence
+#   "need_review" → ML confidence < 0.60  → send to AP team for manual check
+#
+# SPARK CONNECT COMPATIBLE
+#   No sparkContext / broadcast used.  Model is passed via Python closure.
+#
+# RULES SOURCE
+#   Cluster_Rules_2_21_24.xlsx  (3 sheets)
+#     Sheet 1: Keyword Rules  → _KEYWORD_RULES_BASE  (CELL 8)
+#     Sheet 2: Generic Rules  → PySpark _assign() calls  (CELL 4, Priority 2)
+#     Sheet 3: Parker Volpe   → PySpark _assign() calls  (CELL 4, Priority 1)
+# =============================================================================
 
+
+# =============================================================================
+# CELL 1 — INSTALL  (run this cell alone, then restart the cluster)
+# =============================================================================
+# %pip install xgboost scikit-learn openpyxl
+# NOTE: do NOT add lightgbm — Databricks pre-installs it and pip will break it
+
+
+# =============================================================================
+# CELL 2 — IMPORTS
+# =============================================================================
+import hashlib
+import datetime as _dt
+import numpy as np
+import pandas as pd
+
+from xgboost import XGBClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, f1_score
+from scipy.sparse import hstack as sp_hstack, csr_matrix
+
+from pyspark.sql.functions import (
+    col, when, lit, lower, concat_ws, coalesce, count, trim
+)
+from pyspark.sql.types import (
+    StructType, StructField, StringType, FloatType, DateType
+)
+
+print("Imports OK")
+
+
+# =============================================================================
+# CELL 3 — CONFIGURATION  ← the only section you need to edit
+# =============================================================================
+
+# Month to SCORE.  All months BEFORE this are used for training.
+INVOICE_MONTH = "2022-01"   # format: "YYYY-MM"
+
+PATHS = {
+    # ── Required ──────────────────────────────────────────────────────────────
+    "daily_invoices": "abfss://atims@prdatimsstore.dfs.core.windows.net/FACT_TABLES/VMAP_FACT_TABLE",
+
+    # ── Optional — uncomment to enable ────────────────────────────────────────
+    # "historical_labeled":  "abfss://...",
+    #   Pre-labeled historical invoices.  Merged with daily_invoices for training.
+    #   If not set → training uses daily_invoices WHERE date < INVOICE_MONTH.
+
+    # "cluster_rules_excel": "abfss://...",
+    #   Path to Cluster_Rules.xlsx on ADLS.
+    #   If set  → Excel rules are loaded and MERGED with the hardcoded base rules.
+    #             Excel wins when the same keyword exists in both sources.
+    #             New keywords in Excel are appended automatically.
+    #   If not set → hardcoded _KEYWORD_RULES_BASE (CELL 8) is used as-is.
+
+    # "reports_output": "abfss://...",
+    #   Where to write the output Parquet on ADLS.
+    #   If not set → writes a CSV to /tmp/ on the driver node.
+}
+
+# Set to an integer (e.g. 50_000) for a fast test run.  None = full dataset.
+SAMPLE_LIMIT = 50_000
+
+# Mapping of logical names → actual Spark column names in VMAP_FACT_TABLE
+COLS = {
+    "invoice_id":           "INVOICE_ID",
+    "accounting_date":      "ACCOUNTING_DATE",
+    "line_description":     "LINE_DESCRIPTION",
+    "description":          "DESCRIPTION",
+    "dist_all_description": "DIST_ALL_DESCRIPTION",
+    "extc":                 "EXTC_CODE",
+    "mic":                  "MIC",
+    "account_code":         "ACCOUNT_CODE",
+    "vendor_name":          "VENDOR_NAME",
+    "company_code":         "COMPANY_CODE",
+    "state":                "STATE",
+    "invoice_source":       "INVOICE_SOURCE",
+    "tran_amount":          "TRAN_AMOUNT",
+}
+
+# ML training settings
+MAX_ROWS_PER_CLASS   = 5_000  # max rows sampled per cluster for training
+MIN_CLASS_SAMPLES    = 10     # clusters with fewer rows are excluded from training
+CONFIDENCE_THRESHOLD = 0.60   # ML predictions below this go to "need_review"
+SCORE_PARTITIONS     = 200    # Spark partitions used during distributed scoring
+
+# Categorical columns fed to the ML model as label-encoded features
+CAT_COLS = ["EXTC_CODE", "MIC", "COMPANY_CODE", "STATE", "INVOICE_SOURCE"]
+
+print("Config OK")
+
+
+# =============================================================================
+# CELL 4 — RULES ENGINE
+# =============================================================================
+# All rules are pure PySpark — evaluated lazily in a single Spark job.
+# Rule priority (first match wins, later rules never overwrite):
+#   Priority 1 — Parker Volpe  (most specific: vendor + description + EXTC)
+#   Priority 2 — Generic Rules (field-based: MIC, EXTC, Account, Vendor)
+#   Priority 3 — Keyword Rules (description text search, least specific)
+# =============================================================================
+
+def _assign(df, condition, cluster_name, rule_label):
+    """
+    Apply one classification rule.
+
+    Sets 'cluster' and 'rule_matched' only when they are still NULL —
+    so the first matching rule always wins and later rules are ignored.
+    """
+    return (
+        df.withColumn(
+            "cluster",
+            when(col("cluster").isNull() & condition, lit(cluster_name))
+            .otherwise(col("cluster"))
+        ).withColumn(
+            "rule_matched",
+            when(col("rule_matched").isNull() & condition, lit(rule_label))
+            .otherwise(col("rule_matched"))
+        )
+    )
+
+
+# All three description columns are searched by _contains() so a match
+# in any of them fires the rule — no invoice text is missed.
+_DESC_COLS = [
+    "final_description",    # LINE_DESCRIPTION + DESCRIPTION combined (built below)
+    "DESCRIPTION",          # raw AP invoice description
+    "DIST_ALL_DESCRIPTION", # distribution-level description
+]
+
+
+def _contains(*keywords):
+    """
+    Returns True if ANY description column contains ANY of the given keywords.
+    Case-insensitive.  Pass multiple keywords for OR logic.
+    Example: _contains("battery", "enersys")  fires if either word appears.
+    """
+    if not keywords:
+        return lit(False)
+    expr = lit(False)
+    for kw in keywords:
+        for col_name in _DESC_COLS:
+            expr = expr | lower(col(col_name)).like(f"%{kw.lower()}%")
+    return expr
+
+
+def _not_contains(*keywords):
+    """Returns True if NONE of the description columns contain any keyword."""
+    return ~_contains(*keywords)
+
+
+def build_labels(df, keyword_rules=None):
+    """
+    Label every invoice row with a cluster name.
+
+    Steps:
+      1. Build 'final_description' by combining LINE_DESCRIPTION + DESCRIPTION
+         (SCM Purchase filler values are treated as empty).
+      2. Apply all three priority layers of rules in order.
+      3. Tag each row: label_source="rule" (matched) or "no_rule" (ML needed).
+
+    Args:
+        df:            Spark DataFrame with invoice data.
+        keyword_rules: List of (keywords_tuple, cluster, label) from CELL 8.
+                       Falls back to an empty list if not provided.
+
+    Returns:
+        Spark DataFrame with added columns:
+            final_description, label_cluster, label_source, rule_matched
+    """
+
+    # ── Step 1: Build final_description ──────────────────────────────────────
+    # Combine available text fields in priority order.
+    # "SCM Purchase" is a system filler — treated as blank.
+    FILLER_VALUES = ["SCM Purchase", "SCM PURCHASE", "scm purchase"]
+
+    def _clean_text(col_name):
+        """Return NULL if the column is missing, blank, or contains a filler value."""
+        if col_name not in df.columns:
+            return lit(None).cast("string")
+        return when(
+            trim(col(col_name)).isin(FILLER_VALUES) | col(col_name).isNull(),
+            lit(None)
+        ).otherwise(col(col_name))
+
+    df = (
+        df.withColumn("_l", _clean_text(COLS["line_description"]))
+          .withColumn("_d", _clean_text(COLS["description"]))
+          .withColumn("_x", _clean_text(COLS["dist_all_description"]))
+          .withColumn("_e", _clean_text("EXTENDED_DESCRIPTION"))  # last-resort fallback
+    )
+
+    # Combine in order: both fields → LINE only → DESC only → DIST_ALL → EXTENDED → ""
+    df = df.withColumn("final_description", coalesce(
+        when(col("_l").isNotNull() & col("_d").isNotNull(), concat_ws(" ", col("_l"), col("_d"))),
+        col("_l"),
+        col("_d"),
+        col("_x"),
+        col("_e"),
+        lit(""),
+    )).drop("_l", "_d", "_x", "_e")
+    df = df.withColumn("final_description", col("final_description").cast("string"))
+
+    # ── Step 2: Prepare helper columns ───────────────────────────────────────
+
+    # MIC is ~70% null — MIC1 holds the value where MIC is null.
+    # Use _eff_mic so all MIC rules work on both columns.
+    if "MIC1" in df.columns:
+        df = df.withColumn("_eff_mic", coalesce(col(COLS["mic"]), col("MIC1")))
+    else:
+        df = df.withColumn("_eff_mic", col(COLS["mic"]))
+
+    # Replace nulls in description columns with "" so .like() never silently fails.
+    for raw_col in ["DESCRIPTION", "DIST_ALL_DESCRIPTION"]:
+        if raw_col in df.columns:
+            df = df.withColumn(raw_col, coalesce(col(raw_col), lit("")))
+
+    # Initialise cluster columns — both NULL until a rule fires
+    df = (
+        df.withColumn("cluster",      lit(None).cast("string"))
+          .withColumn("rule_matched", lit(None).cast("string"))
+    )
+
+    # Short aliases used throughout the rules below
+    M  = "_eff_mic"
+    E  = COLS["extc"]
+    A  = COLS["account_code"]
+    V  = COLS["vendor_name"]
+    CO = COLS["company_code"]
+
+    # =========================================================================
+    # PRIORITY 1 — PARKER VOLPE RULES  (most specific — vendor-level overrides)
+    # Source: Cluster_Rules.xlsx → Sheet "Parker Volpe - Rules"
+    # =========================================================================
+
+    # -- Vendor + Description + EXTC ------------------------------------------
+    df = _assign(df,
+        col(V).like("%81EIGHTY PROMOTIONS LP%") &
+        col(E).isin(["520", "549", "543"]) &
+        _contains("name", "apparel", "backpack"),
+        "Miscellaneous Materials", "pv:81eighty-apparel")
+
+    df = _assign(df,
+        col(V).like("%81EIGHTY PROMOTIONS LP%") &
+        col(E).isin(["520", "549", "543"]) &
+        _contains("face", "mask"),
+        "PPE", "pv:81eighty-mask")
+
+    df = _assign(df,
+        col(V).like("%SIENA ENGINEERING GROUP%") & _contains("permit"),
+        "Permits", "pv:siena-permit")
+
+    df = _assign(df,
+        col(V).like("%PARALLEL TOWERS III LLC%") & (col(E) == "520") &
+        _contains("norad", "materials"),
+        "Miscellaneous Materials - Telecom", "pv:parallel-towers-misc")
+
+    df = _assign(df,
+        col(V).like("%PARALLEL TOWERS III LLC%") & (col(E) == "520") &
+        _contains("battery", "enersys"),
+        "Telecom Equipment", "pv:parallel-towers-battery")
+
+    # -- Vendor + Description -------------------------------------------------
+    # NOTE: "soap clear" must come BEFORE "vest safety" — row 39 in the source data
+    # contains both phrases and the correct cluster is Miscellaneous Materials.
+    df = _assign(df,
+        col(V).like("%IMAGE SOLUTIONS APPAREL INC%") & _contains("soap clear"),
+        "Miscellaneous Materials", "pv:image-solutions-soap")
+
+    df = _assign(df,
+        col(V).like("%IMAGE SOLUTIONS APPAREL INC%") & _contains("vest safety", "fiber logo"),
+        "Safety Equipment", "pv:image-solutions-vest")
+
+    df = _assign(df,
+        col(V).like("%MATRIX RESOURCES INC%") & _contains("professional services"),
+        "Professional Service", "pv:matrix-resources")
+
+    # -- Vendor + EXTC --------------------------------------------------------
+    df = _assign(df, col(V).like("%KGPCO SERVICES LLC%") & (col(E) == "450"),
+        "3rd Party Labor",                   "pv:kgpco-450")
+    df = _assign(df, col(V).like("%KGPCO SERVICES LLC%") & (col(E) == "455"),
+        "Installation Services - Telecom",   "pv:kgpco-455")
+    df = _assign(df, col(V).like("%KGPCO SERVICES LLC%") & col(E).isin(["460", "465"]),
+        "Vendor Engineering",                "pv:kgpco-460-465")
+    df = _assign(df, col(V).like("%KGPCO SERVICES LLC%") & (col(E) == "520"),
+        "Miscellaneous Materials - Telecom", "pv:kgpco-520")
+
+    df = _assign(df, col(V).like("%VMWARE INC%") & (col(E) == "6G2"),
+        "SaaS", "pv:vmware-6g2")
+    df = _assign(df, col(V).like("%GENERAL LOGISTICS SYSTEMS US INC%") & (col(E) == "48C"),
+        "Freight - Common Carrier Charges",  "pv:gls-48c")
+    df = _assign(df, col(V).like("%SAIA LOGISTICS SERVICES LLC%") & (col(E) == "48C"),
+        "Freight - Common Carrier Charges",  "pv:saia-48c")
+
+    # -- Vendor only ----------------------------------------------------------
+    for vendor, cluster in {
+        "AMERICAN SAFETY UTILITY CORP":       "Safety Equipment",
+        "ALLIED UNIVERSAL SECURITY SERVICES": "Security Service",
+        "ALLIED UNIVERSAL":                   "Security Service",
+        "BRINKS INCORPORATED":                "Security Service",
+        "GARDA CL NORTHWEST":                 "Security Service",
+        "LINCOLN CONTROLS INC":               "Security Service",
+        "LOOMIS FARGO & CO":                  "Security Service",
+        "ROCHESTER ARMORED CAR CO INC":       "Security Service",
+        "SUMMIT OFF DUTY SERVICES LLC":       "Security Service",
+        "THE MORNING CONSULT LLC":            "Professional Service",
+        "THE GEORGE EVANS CORPORATION":       "Cable - Miscellaneous",
+        "HERMAN MILLER INC":                  "Miscellaneous Materials",
+    }.items():
+        df = _assign(df, col(V).like(f"%{vendor}%"), cluster, f"pv:vendor={vendor[:25]}")
+
+    # -- EXTC only ------------------------------------------------------------
+    df = _assign(df, col(E) == "69A", "Operating Lease", "pv:extc=69A")
+
+    # =========================================================================
+    # PRIORITY 2 — GENERIC RULES  (field-based: MIC, EXTC, Account, Vendor)
+    # Source: Cluster_Rules.xlsx → Sheet "Generic Rules"
+    # =========================================================================
+
+    # -- MIC code exact matches (order: exact before pattern) -----------------
+    df = _assign(df, col(M) == "SW",                      "ERTU",                              "mic=SW")
+    df = _assign(df, col(M).isin(["CPEMIS", "CPERTR"]),   "CPE",                               "mic=CPE")
+    df = _assign(df, col(M) == "CEQ",                     "Computer Equipments",               "mic=CEQ")
+    df = _assign(df, col(M).isin(["COE10K", "CHROR1K"]),  "Miscellaneous Materials - Telecom", "mic=COE10K")
+
+    # -- MIC code pattern matches ---------------------------------------------
+    df = _assign(df, col(M).like("SEQ%"),                           "Network Equipment",        "mic=SEQ%")
+    df = _assign(df, col(M).like("NEQ%"),                           "Network Equipment",        "mic=NEQ%")
+    df = _assign(df, col(M).like("TOWER%"),                         "Tower Materials",          "mic=TOWER%")
+    df = _assign(df, col(M).like("CEQ%"),                           "Telecom Equipment",        "mic=CEQ%")
+    df = _assign(df, col(M).like("FBR%") & col(M).like("%K"),       "Telecom Equipment",        "mic=FBR%K")
+    df = _assign(df, col(M).like("ANT%") & col(M).like("%K"),       "Communications Equipment", "mic=ANT%K")
+
+    # -- EXTC code exact + pattern --------------------------------------------
+    df = _assign(df, col(E) == "48C",       "Freight - Common Carrier Charges", "extc=48C")
+    df = _assign(df, col(E) == "89Q",       "Research and Development",          "extc=89Q")
+    df = _assign(df, col(E).like("894%"),   "Permits",                           "extc=894%")
+
+    # -- MIC + EXTC combinations ----------------------------------------------
+    df = _assign(df, (col(E) == "520") & col(M).isin(["COE1K", "COEOTHER"]),
+        "Miscellaneous Materials - Telecom", "extc=520+mic=COE")
+    df = _assign(df, (col(M) == "COEOTHER") & (col(E) == "450"),
+        "Contract plant labor",              "mic=COEOTHER+extc=450")
+    df = _assign(df, (col(M) == "COEOTHER") & (col(E) == "460"),
+        "Vendor Engineering",                "mic=COEOTHER+extc=460")
+    df = _assign(df, col(M).like("EFI%") & (col(E) == "450"),
+        "Contract plant labor",              "mic=EFI%+extc=450")
+    df = _assign(df, (col(M) == "CPEMIS") & (col(E) == "48C"),
+        "Freight",                           "mic=CPEMIS+extc=48C")
+
+    # -- EXTC + Account combinations ------------------------------------------
+    df = _assign(df, (col(E) == "520") & col(A).like("%M"),
+        "Maintenance",                       "extc=520+acct=%M")
+    df = _assign(df, (col(A) == "6124.570M") & (col(E) == "6A9"),
+        "Operating Lease",                   "acct=6124+extc=6A9")
+    df = _assign(df, (col(A) == "399C") & (col(E) == "61J"),
+        "Software - ERTU",                   "acct=399C+extc=61J")
+    df = _assign(df, (col(E) == "450") & (col(A) == "2003.85C"),
+        "Outside Plant Construction",        "extc=450+acct=2003.85C")
+    df = _assign(df, (col(E) == "460") & (col(A) == "2003.85C"),
+        "Outside Plant Construction",        "extc=460+acct=2003.85C")
+
+    # -- Account code rules (specific before generic) -------------------------
+    df = _assign(df, (col(A) == "6114.1") & _contains("insulated gloves"),
+        "Safety Equipment",                  "acct=6114.1+insulated-gloves")
+    df = _assign(df, col(A) == "6114.1",
+        "Tools & Testing Equipment",         "acct=6114.1")
+    df = _assign(df, col(A).like("1130%"),
+        "Nontaxable",                        "acct=1130%")
+    df = _assign(df, col(A).isin(["1220.121", "1220.147"]),
+        "Inventory",                         "acct=1220.x")
+    df = _assign(df, col(A).like("4010%") & _not_contains("freight charges"),
+        "Inventory",                         "acct=4010%")
+
+    # -- Description + EXTC combinations (from Generic Rules sheet) -----------
+    df = _assign(df, _contains("ceeot") & (col(E) == "455"),
+        "Installation Services - Telecom",   "desc=ceeot+extc=455")
+    df = _assign(df, _contains("ceeot") & (col(E) == "465"),
+        "Vendor Engineering",                "desc=ceeot+extc=465")
+    df = _assign(df, _contains("ceeot") & (col(E) == "520"),
+        "Miscellaneous Materials - Telecom", "desc=ceeot+extc=520")
+
+    # -- Description + Account + Company combinations -------------------------
+    df = _assign(df,
+        _contains("landscape") & (col(A) == "6121.235") & (col(CO) == "SS00"),
+        "Landscape Services", "desc=landscape+acct+co=SS00")
+    df = _assign(df,
+        (lower(col("final_description")).like("landscape gravel%") |
+         lower(col("DESCRIPTION")).like("landscape gravel%") |
+         lower(col("DIST_ALL_DESCRIPTION")).like("landscape gravel%")) &
+        (col(CO) == "TTOO"),
+        "Miscellaneous Materials", "desc=landscape-gravel+co=TTOO")
+    df = _assign(df,
+        (lower(col("final_description")).like("base service%") |
+         lower(col("DESCRIPTION")).like("base service%") |
+         lower(col("DIST_ALL_DESCRIPTION")).like("base service%")) &
+        (col(A) == "6123.91"),
+        "Security Service", "desc=base-service+acct=6123.91")
+
+    # -- Company code ---------------------------------------------------------
+    df = _assign(df, col(CO) == "7M39", "DTV", "co=7M39")
+
+    # -- Vendor name rules (from Generic Rules sheet) -------------------------
+    for vendor, cluster in {
+        "IRON MOUNTAIN":                    "Storage Services",
+        "DIVERSIFIED WIRE & CABLE":         "Cable - Nonmetallic",
+        "CISCO SYSTEMS CAPITAL":            "Capital Lease",
+        "TEKSYSTEMS INC":                   "Data Processing",
+        "HIGHTOWERS PETROLEUM":             "Propane / Fuels",
+        "AMERICAN SAFETY UTILITY":          "Safety Equipment",
+        "IMAGE SOLUTIONS APPAREL INC":      "Safety Equipment",
+        "SAF T GARD INTERNATIONAL":         "Safety Equipment",
+        "SOUTHLAND ENTERPRISES":            "Safety Equipment",
+        "STANLEY CONVERGENT":               "Security Service",
+        "JK COMMUNICATIONS & CONSTRUCTION": "Real Property Construction",
+        "CANTEEN ONE":                      "Food/Beverage",
+        "ARAMARK REFRESHMENT":              "Food/Beverage",
+    }.items():
+        df = _assign(df, col(V).like(f"%{vendor}%"), cluster, f"vendor={vendor[:25]}")
+
+    # -- Utilities (ENGIE INSIGHT = energy management, CASS = bill processing) -
+    df = _assign(df, col(E).isin(["5B1", "531", "53A", "53B", "53C"]),
+        "Utilities", "extc=5B1/531/53x")
+    df = _assign(df, col(E) == "48Y",
+        "Utilities", "extc=48Y")
+    df = _assign(df, col(A).like("6531.%"),
+        "Utilities", "acct=6531.x")
+
+    # -- Tower / site leases (AMERICAN TOWERS, GLOBAL SIGNAL, CCATT) ----------
+    df = _assign(df, col(E).isin(["4A1", "4A0"]),
+        "Tower Lease", "extc=4A1/4A0")
+
+    # -- Telecom field maintenance (KMM, KGP, OFS FITEL) ----------------------
+    df = _assign(df, col(E).isin(["CJ4", "CJ7"]),
+        "Maintenance", "extc=CJ4/CJ7")
+
+    # -- International carrier charges (VODAFONE, TURK TELEKOMUNIKASYON) ------
+    df = _assign(df, col(E) == "CYD",
+        "International Carrier Charges", "extc=CYD")
+
+    # -- Outside Plant Construction (OSP) — multiple EXTC + Account patterns --
+    df = _assign(df, col(E).isin(["419", "481"]) & col(A).like("2003.%"),
+        "Outside Plant Construction", "extc=419/481+acct=2003.x")
+    df = _assign(df, (col(E) == "460") & col(A).like("2003.%"),
+        "Outside Plant Construction", "extc=460+acct=2003.x")
+    df = _assign(df, col(E).isin(["416", "417", "421"]) & col(A).like("2003.%"),
+        "Outside Plant Construction", "extc=416/417/421+acct=2003.x")
+    df = _assign(df, (col(E) == "450") & (col(A).like("64%") | col(A).like("3100.%")),
+        "Outside Plant Construction", "extc=450+acct=64x/3100.x")
+    df = _assign(df, col(E) == "453",
+        "Outside Plant Construction", "extc=453-utility-locating")
+    df = _assign(df, col(E).isin(["419", "460"]) & (col(A).like("623%") | col(A).like("621%")),
+        "Outside Plant Construction", "extc=419/460+acct=623x")
+    df = _assign(df, col(A).like("3100.%"),
+        "Outside Plant Construction", "acct=3100.x")
+    df = _assign(df, col(A).like("623%.%"),
+        "Outside Plant Construction", "acct=623x.x")
+
+    # -- IT / Telecom equipment (SYNNEX, LINK AMERICA) -------------------------
+    df = _assign(df, col(E) == "9M1",
+        "Telecom Equipment", "extc=9M1")
+
+    # -- Software / SaaS license rental (VELOCLOUD SD-WAN, STRATACACHE) -------
+    df = _assign(df, col(E) == "4D0",
+        "SaaS", "extc=4D0")
+
+    # -- Travel & Entertainment (American Express corporate card) --------------
+    df = _assign(df, col(E).isin(["282", "286", "287", "28B"]),
+        "Travel & Entertainment", "extc=28x-amex")
+    df = _assign(df, col(A).like("6534.%") | col(A).like("6535.%"),
+        "Travel & Entertainment", "acct=6534/6535.x")
+
+    # -- Conferencing & Resale (WebEx / conferencing resold to customers) ------
+    df = _assign(df, (col(E) == "879") | (col(A) == "6621.99"),
+        "Conferencing & Resale Services", "extc=879/acct=6621")
+    df = _assign(df, col(A).like("662%.%"),
+        "Conferencing & Resale Services", "acct=662x.x")
+
+    # -- Professional / Consulting services ------------------------------------
+    df = _assign(df, col(A) == "6722.99",
+        "Professional Service", "acct=6722.99")
+    df = _assign(df, col(A) == "6728.99",
+        "Professional Service", "acct=6728.99")
+
+    # -- Facilities (QUENCH water coolers, CBRE building services) -------------
+    df = _assign(df, (col(E) == "543") | (col(A) == "6123.91"),
+        "Facilities Services", "extc=543/acct=6123.91")
+
+    # -- Tools & equipment via EXTC 520 + 65xx accounts -----------------------
+    df = _assign(df, (col(E) == "520") & (col(A).like("65%") | col(A).like("651%")),
+        "Tools & Testing Equipment", "extc=520+acct=65x")
+
+    # -- Account code catch-alls (broad patterns, fire last) ------------------
+    df = _assign(df, col(A).like("2003.%"),
+        "Outside Plant Construction",  "acct=2003.x-catchall")
+    df = _assign(df,
+        col(A).like("6121.%") & _not_contains("utility", "util", "electric", "gas", "water", "trash"),
+        "Operating Expense",           "acct=6121.x")
+    df = _assign(df, col(A).like("1330.%"),
+        "Prepaid / Intangible Asset",  "acct=1330.x")
+    df = _assign(df, col(A).like("4080.%"),
+        "Access & Settlement Charges", "acct=4080.x")
+    df = _assign(df, col(A).like("6998.%") | col(A).like("6999.%"),
+        "Miscellaneous Expense",       "acct=6998/6999.x")
+    df = _assign(df, col(A).like("6362.%"),
+        "CPE Maintenance",             "acct=6362.x")
+    df = _assign(df, col(A).like("1439.%"),
+        "Inventory",                   "acct=1439.x")
+    df = _assign(df, col(A).like("651%.%"),
+        "Maintenance",                 "acct=651x.x")
+
+    # =========================================================================
+    # PRIORITY 3 — KEYWORD RULES  (description text search, least specific)
+    # Source: Cluster_Rules.xlsx → Sheet "Keyword Rules"
+    # keyword_rules list is built in CELL 8 (hardcoded + optional Excel merge).
+    # dtv is hardcoded here directly so it always fires before the loop.
+    # =========================================================================
+
+    df = _assign(df, _contains("dtv"), "Content Fees", "kw=dtv")
+
+    for kw_tuple, cluster, label in (keyword_rules or []):
+        df = _assign(df, _contains(*kw_tuple), cluster, label)
+
+    # ── Finalise output columns ───────────────────────────────────────────────
+    df = df.drop("_eff_mic")
+    df = (
+        df.withColumn("label_cluster",
+            when(col("cluster").isNotNull(), col("cluster"))
+            .otherwise(lit(None).cast("string")))
+          .withColumn("label_source",
+            when(col("cluster").isNotNull(), lit("rule"))
+            .otherwise(lit("no_rule")))
+    )
+
+    # Print rule coverage stats
+    counts = df.groupBy("label_source").agg(count("*").alias("n")).toPandas()
+    total  = int(counts["n"].sum())
+    ruled  = int(counts.loc[counts["label_source"] == "rule", "n"].sum()) if total else 0
+    if total:
+        print(f"  Rule coverage: {ruled:,} / {total:,} ({ruled/total*100:.1f}%)  "
+              f"→ ML needed: {total - ruled:,}")
+    return df
+
+
+print("Rules engine OK")
+
+
+# =============================================================================
+# CELL 5 — FEATURE ENGINEERING
+# =============================================================================
+# Builds a sparse feature matrix from a Pandas DataFrame.
+# Called from both train() and the scoring closure in score().
+# =============================================================================
+
+def _to_str(value):
+    """
+    Safely convert any value to a plain string.
+    Returns "UNKNOWN" for None, NaN, or empty arrays.
+    Used to normalise values before LabelEncoder.transform().
+    """
+    if value is None:                                    return "UNKNOWN"
+    if isinstance(value, float) and np.isnan(value):    return "UNKNOWN"
+    if isinstance(value, (list, np.ndarray)):
+        return str(value[0]).strip() if len(value) > 0 else "UNKNOWN"
+    return str(value).strip()
+
+
+def _build_features(pdf, tfidf, tfidf_vendor, cat_enc):
+    """
+    Build a sparse feature matrix for a Pandas DataFrame.
+
+    Features (concatenated horizontally):
+      1. Description TF-IDF      — word 1–3-grams from final_description
+      2. Vendor name TF-IDF      — char 3–5-grams from VENDOR_NAME
+      3. Categorical columns     — label-encoded EXTC, MIC, COMPANY, STATE, SOURCE
+      4. Vendor hash             — MD5(VENDOR_NAME) % 2000  (handles unseen vendors)
+      5. Transaction amount      — log1p(|TRAN_AMOUNT|)
+      6. Account code hash       — MD5(ACCOUNT_CODE) % 500  (handles 120+ unique values)
+
+    Args:
+        pdf:          Pandas DataFrame with invoice rows.
+        tfidf:        Fitted TfidfVectorizer for descriptions.
+        tfidf_vendor: Fitted TfidfVectorizer for vendor names.
+        cat_enc:      Dict of {column_name: fitted LabelEncoder}.
+
+    Returns:
+        scipy sparse matrix, shape (n_rows, n_features)
+    """
+    # Text features
+    X_text   = tfidf.transform(pdf["final_description"].fillna("").astype(str).tolist())
+    X_vendor = tfidf_vendor.transform(pdf[COLS["vendor_name"]].fillna("").astype(str).tolist())
+
+    # Categorical features — unseen values mapped to "UNKNOWN"
+    cat_parts = []
+    for col_name in CAT_COLS:
+        enc   = cat_enc[col_name]
+        known = set(enc.classes_)
+        vals  = np.array([
+            v if (v := _to_str(u)) in known else "UNKNOWN"
+            for u in pdf[col_name].values
+        ])
+        cat_parts.append(enc.transform(vals).reshape(-1, 1).astype(np.float32))
+
+    # Numeric/hash features
+    vendor_hash = (
+        pdf[COLS["vendor_name"]].fillna("")
+        .apply(lambda n: int(hashlib.md5(str(n).encode("utf-8")).hexdigest(), 16) % 2000)
+        .values.reshape(-1, 1).astype(np.float32)
+    )
+    amount = (
+        np.log1p(np.abs(pd.to_numeric(pdf[COLS["tran_amount"]], errors="coerce").fillna(0).values))
+        .reshape(-1, 1).astype(np.float32)
+    )
+    acct_hash = (
+        pdf[COLS["account_code"]].fillna("")
+        .apply(lambda a: int(hashlib.md5(str(a).encode("utf-8")).hexdigest(), 16) % 500)
+        .values.reshape(-1, 1).astype(np.float32)
+    )
+
+    dense_block = csr_matrix(np.hstack(cat_parts + [vendor_hash, amount, acct_hash]))
+    return sp_hstack([X_text, X_vendor, dense_block], format="csr")
+
+
+print("Features OK")
+
+
+# =============================================================================
+# CELL 6 — TRAIN
+# =============================================================================
+# Uses Spark only for sampling (fast, no shuffle).
+# Pulls the sample to the driver and trains XGBoost there.
+# =============================================================================
+
+def train(df_hist, df_curr_eval=None):
+    """
+    Train an XGBoost multi-class classifier on rule-labelled invoice rows.
+
+    Steps:
+      1. Filter to rows where label_source="rule" (known clusters).
+      2. Stratified sample via sampleBy() — no full shuffle, very fast.
+      3. Pull sample to driver with toPandas().
+      4. Fit TF-IDF vectorizers and LabelEncoders on the sample.
+      5. Train XGBoost with early stopping.
+
+    Args:
+        df_hist:       Spark DataFrame — historical invoices (already labelled).
+        df_curr_eval:  Spark DataFrame — current month invoices (used as out-of-time
+                       eval set if provided; otherwise 10% holdout is used).
+
+    Returns:
+        (model, tfidf, tfidf_vendor, cat_enc, label_enc)
+        — all fitted objects, ready to be passed to score().
+    """
+    TRAIN_COLS = (
+        ["final_description", "label_cluster"]
+        + CAT_COLS
+        + [COLS["vendor_name"], COLS["tran_amount"], COLS["account_code"]]
+    )
+    avail = [c for c in TRAIN_COLS if c in df_hist.columns]
+
+    # Filter to rows with a known cluster
+    df_labelled = (
+        df_hist
+        .filter(col("label_source") == "rule")
+        .filter(col("label_cluster").isNotNull())
+        .select(avail)
+    )
+
+    # Count rows per cluster; drop clusters with too few rows
+    cluster_counts = (
+        df_labelled.groupBy("label_cluster")
+        .agg(count("*").alias("n"))
+        .toPandas()
+    )
+    valid_clusters = cluster_counts.loc[
+        cluster_counts["n"] >= MIN_CLASS_SAMPLES, "label_cluster"
+    ].tolist()
+    print(f"  {int(cluster_counts['n'].sum()):,} labelled rows  |  "
+          f"{len(valid_clusters)} valid clusters (≥{MIN_CLASS_SAMPLES} rows each)")
+
+    if not valid_clusters:
+        raise ValueError("No clusters meet MIN_CLASS_SAMPLES — check rules output.")
+
+    # Stratified sample — sampleBy does not shuffle, so it is fast
+    n_by_cluster = cluster_counts.set_index("label_cluster")["n"].to_dict()
+    fractions    = {
+        c: min(1.0, MAX_ROWS_PER_CLASS / max(1, n_by_cluster[c]))
+        for c in valid_clusters
+    }
+    pdf = (
+        df_labelled
+        .filter(col("label_cluster").isin(valid_clusters))
+        .sampleBy("label_cluster", fractions=fractions, seed=42)
+        .toPandas()
+    )
+    print(f"  Training sample: {len(pdf):,} rows pulled to driver")
+
+    # Fit description TF-IDF (word 1–3-grams, larger vocab = better phrase capture)
+    min_df = 2 if len(pdf) > 500 else 1
+    tfidf = TfidfVectorizer(
+        max_features=8_000, ngram_range=(1, 3),
+        sublinear_tf=True, min_df=min_df,
+        analyzer="word", token_pattern=r"[a-zA-Z0-9]{2,}",
+    )
+    X_text = tfidf.fit_transform(pdf["final_description"].fillna("").astype(str).tolist())
+
+    # Fit vendor name TF-IDF (character n-grams capture partial vendor names)
+    min_df_v = 2 if len(pdf) > 300 else 1
+    tfidf_vendor = TfidfVectorizer(
+        max_features=1_000, analyzer="char_wb",
+        ngram_range=(3, 5), sublinear_tf=True, min_df=min_df_v,
+    )
+    X_vendor = tfidf_vendor.fit_transform(
+        pdf[COLS["vendor_name"]].fillna("").astype(str).tolist()
+    )
+
+    # Fit one LabelEncoder per categorical column (include "UNKNOWN" for unseen values)
+    cat_enc  = {}
+    cat_parts = []
+    for col_name in CAT_COLS:
+        vals = np.array([_to_str(v) for v in pdf[col_name].values])
+        enc  = LabelEncoder()
+        enc.fit(np.append(vals, "UNKNOWN"))
+        cat_enc[col_name] = enc
+        cat_parts.append(enc.transform(vals).reshape(-1, 1).astype(np.float32))
+
+    vendor_hash = (
+        pdf[COLS["vendor_name"]].fillna("")
+        .apply(lambda n: int(hashlib.md5(str(n).encode("utf-8")).hexdigest(), 16) % 2000)
+        .values.reshape(-1, 1).astype(np.float32)
+    )
+    amount = (
+        np.log1p(np.abs(pd.to_numeric(pdf[COLS["tran_amount"]], errors="coerce").fillna(0).values))
+        .reshape(-1, 1).astype(np.float32)
+    )
+    acct_hash = (
+        pdf[COLS["account_code"]].fillna("")
+        .apply(lambda a: int(hashlib.md5(str(a).encode("utf-8")).hexdigest(), 16) % 500)
+        .values.reshape(-1, 1).astype(np.float32)
+    )
+
+    X = sp_hstack(
+        [X_text, X_vendor, csr_matrix(np.hstack(cat_parts + [vendor_hash, amount, acct_hash]))],
+        format="csr",
+    )
+    print(f"  Feature matrix: {X.shape[0]:,} rows × {X.shape[1]:,} features")
+
+    label_enc = LabelEncoder()
+    y = label_enc.fit_transform(pdf["label_cluster"].astype(str))
+    del pdf  # free driver memory
+
+    # Build evaluation set (out-of-time = current month; fallback = 10% holdout)
+    pdf_eval = pd.DataFrame()
+    if df_curr_eval is not None:
+        avail_ev = [c for c in TRAIN_COLS if c in df_curr_eval.columns]
+        pdf_eval = (
+            df_curr_eval
+            .filter(col("label_source") == "rule")
+            .filter(col("label_cluster").isNotNull())
+            .select(avail_ev).dropna(subset=["label_cluster"])
+            .limit(500 * len(valid_clusters))
+            .toPandas()
+        )
+        known    = set(label_enc.classes_)
+        pdf_eval = pdf_eval[pdf_eval["label_cluster"].astype(str).isin(known)]
+
+    if len(pdf_eval) == 0:
+        n   = X.shape[0]
+        if n < 10:
+            raise ValueError(
+                f"Only {n} training rows — need at least 10. "
+                "Lower MIN_CLASS_SAMPLES or check rules output."
+            )
+        idx  = np.random.RandomState(42).permutation(n)
+        cut  = max(1, int(n * 0.9))
+        X, X_eval = X[idx[:cut]], X[idx[cut:]]
+        y, y_eval = y[idx[:cut]], y[idx[cut:]]
+        eval_label = "10% historical holdout"
+    else:
+        X_eval    = _build_features(pdf_eval, tfidf, tfidf_vendor, cat_enc)
+        y_eval    = label_enc.transform(pdf_eval["label_cluster"].astype(str).values)
+        eval_label = f"current-month out-of-time ({len(y_eval):,} rows)"
+        del pdf_eval
+
+    n_classes = len(label_enc.classes_)
+    print(f"  Eval set: {eval_label}  |  {n_classes} clusters")
+    print("  Training XGBoost …")
+
+    model = XGBClassifier(
+        n_estimators=500,
+        max_depth=8,
+        learning_rate=0.03,
+        subsample=0.85,
+        colsample_bytree=0.7,
+        colsample_bylevel=0.8,
+        min_child_weight=3,
+        gamma=0.1,
+        reg_alpha=0.1,
+        reg_lambda=1.5,
+        eval_metric="mlogloss",
+        early_stopping_rounds=30,
+        tree_method="hist",
+        grow_policy="lossguide",
+        max_leaves=64,
+        objective="multi:softprob",
+        num_class=n_classes,
+        random_state=42,
+        n_jobs=-1,
+    )
+    model.fit(X, y, eval_set=[(X_eval, y_eval)], verbose=False)
+
+    best_n    = getattr(model, "best_iteration", model.n_estimators)
+    y_pred    = np.argmax(model.predict_proba(X_eval), axis=1)
+    acc       = accuracy_score(y_eval, y_pred)
+    f1        = f1_score(y_eval, y_pred, average="weighted", zero_division=0)
+    print(f"  Best iteration : {best_n} / {model.n_estimators} trees")
+    print(f"  Eval accuracy  : {acc:.4f}")
+    print(f"  Weighted F1    : {f1:.4f}")
+
+    return model, tfidf, tfidf_vendor, cat_enc, label_enc
+
+
+print("Train OK")
+
+
+# =============================================================================
+# CELL 7 — SCORE  (fully distributed — never pulls the full dataset to driver)
+# =============================================================================
+# Uses mapInPandas so XGBoost scoring runs on each Spark executor partition.
+# The model and encoders are captured in the Python closure — no sparkContext
+# or JVM broadcast required (compatible with Spark Connect).
+# =============================================================================
+
+def score(df, model, tfidf, tfidf_vendor, cat_enc, label_enc):
+    """
+    Classify every invoice row using mapInPandas (fully distributed).
+
+    Rule rows     → cluster already known; confidence = 1.0, decision = "rule".
+    No-rule rows  → XGBoost predicts the cluster.
+                    confidence ≥ CONFIDENCE_THRESHOLD → decision = "ml"
+                    confidence <  CONFIDENCE_THRESHOLD → decision = "need_review"
+
+    Returns a Spark DataFrame (stays distributed throughout).
+
+    SERIALISATION STRATEGY
+    ----------------------
+    mapInPandas closures are serialised by cloudpickle and shipped to executor
+    processes. Passing live Python objects (XGBoost model, sklearn vectorizers)
+    directly in a closure is unreliable — their internal C++ state does not always
+    survive cloudpickle.
+
+    Solution: convert every ML artifact to plain bytes on the driver, pass the
+    bytes in the closure (bytes always serialise cleanly), and reconstruct the
+    objects once per partition on the executor.
+    """
+    import pickle as _pickle
+
+    # ── Serialise every ML artifact to plain bytes on the driver ──────────────
+    # Passing live Python objects directly in a mapInPandas closure is unreliable
+    # because cloudpickle re-serialises them.  Explicitly pickling to bytes first
+    # means the closure only captures raw bytes — always safe to serialise.
+    # The worker reconstructs each object once at partition start (not per row).
+    _model_bytes        = _pickle.dumps(model)
+    _tfidf_bytes        = _pickle.dumps(tfidf)
+    _tfidf_vendor_bytes = _pickle.dumps(tfidf_vendor)
+    _cat_enc_bytes      = _pickle.dumps(cat_enc)
+    _label_enc_bytes    = _pickle.dumps(label_enc)
+
+    # ── Capture all other worker dependencies as plain local values ───────────
+    # These are small (dicts, lists, scalars) so they are safe to pass directly.
+    import datetime as _dt_local
+    import hashlib   as _hashlib
+    import numpy     as _np
+    import pandas    as _pd
+    from scipy.sparse import hstack as _sp_hstack, csr_matrix as _csr_matrix
+
+    _cols      = COLS
+    _cat_cols  = CAT_COLS
+    _threshold = CONFIDENCE_THRESHOLD
+    _n_parts   = SCORE_PARTITIONS
+
+    # ── Build the column selection list on the driver ─────────────────────────
+    keep = list(dict.fromkeys([
+        COLS["invoice_id"],
+        COLS["accounting_date"],
+        "INV_LINE_NUMBER",
+        "INVOICE_DIST_LINE_NUM",
+        "INVOICE_NUM",
+        COLS["vendor_name"],
+        COLS["account_code"],
+        COLS["tran_amount"],
+        "final_description",
+        "label_source",
+        "label_cluster",
+        "cluster",
+        "rule_matched",
+    ] + CAT_COLS))
+    avail = [c for c in keep if c in df.columns]
+
+    # ── Output schema ─────────────────────────────────────────────────────────
+    output_schema = StructType(
+        list(df.select(avail).schema.fields) + [
+            StructField("predicted_cluster", StringType(), True),
+            StructField("confidence",        FloatType(),  True),
+            StructField("decision",          StringType(), True),
+            StructField("reported_date",     DateType(),   True),
+        ]
+    )
+
+    # ── Partition scoring function ────────────────────────────────────────────
+    def _score_partition(iterator):
+        """
+        Runs on each executor partition.
+        ML artifacts are reconstructed from bytes ONCE per partition (not per row).
+        All other dependencies come from the closure as plain local values.
+        """
+        # Reconstruct ML objects from bytes — happens once when this partition starts
+        _model     = _pickle.loads(_model_bytes)
+        _tfidf     = _pickle.loads(_tfidf_bytes)
+        _tv        = _pickle.loads(_tfidf_vendor_bytes)
+        _cat_enc   = _pickle.loads(_cat_enc_bytes)
+        _label_enc = _pickle.loads(_label_enc_bytes)
+
+        def _to_str_local(value):
+            if value is None:                                  return "UNKNOWN"
+            if isinstance(value, float) and _np.isnan(value): return "UNKNOWN"
+            if isinstance(value, (_np.ndarray, list)):
+                return str(value[0]).strip() if len(value) > 0 else "UNKNOWN"
+            return str(value).strip()
+
+        def _build_features_local(pdf):
+            X_text   = _tfidf.transform(
+                pdf["final_description"].fillna("").astype(str).tolist())
+            X_vendor = _tv.transform(
+                pdf[_cols["vendor_name"]].fillna("").astype(str).tolist())
+
+            cat_parts = []
+            for col_name in _cat_cols:
+                enc   = _cat_enc[col_name]
+                known = set(enc.classes_)
+                vals  = _np.array([
+                    v if (v := _to_str_local(u)) in known else "UNKNOWN"
+                    for u in pdf[col_name].values
+                ])
+                cat_parts.append(enc.transform(vals).reshape(-1, 1).astype(_np.float32))
+
+            vendor_hash = (
+                pdf[_cols["vendor_name"]].fillna("")
+                .apply(lambda n: int(_hashlib.md5(str(n).encode("utf-8")).hexdigest(), 16) % 2000)
+                .values.reshape(-1, 1).astype(_np.float32)
+            )
+            amount = (
+                _np.log1p(_np.abs(
+                    _pd.to_numeric(pdf[_cols["tran_amount"]], errors="coerce").fillna(0).values
+                )).reshape(-1, 1).astype(_np.float32)
+            )
+            acct_hash = (
+                pdf[_cols["account_code"]].fillna("")
+                .apply(lambda a: int(_hashlib.md5(str(a).encode("utf-8")).hexdigest(), 16) % 500)
+                .values.reshape(-1, 1).astype(_np.float32)
+            )
+            return _sp_hstack(
+                [X_text, X_vendor,
+                 _csr_matrix(_np.hstack(cat_parts + [vendor_hash, amount, acct_hash]))],
+                format="csr",
+            )
+
+        for pdf in iterator:
+            if pdf.empty:
+                yield pdf.assign(
+                    predicted_cluster=_pd.Series(dtype="object"),
+                    confidence       =_pd.Series(dtype="float32"),
+                    decision         =_pd.Series(dtype="object"),
+                    reported_date    =_pd.Series(dtype="object"),
+                )
+                continue
+
+            rule_mask = pdf["label_source"] == "rule"
+            ml_mask   = ~rule_mask
+
+            pdf = pdf.copy()
+            pdf["predicted_cluster"] = None
+            pdf["confidence"]        = None
+            pdf["decision"]          = None
+            pdf["reported_date"]     = None
+
+            # Rule rows — cluster already known, confidence = 1.0
+            if rule_mask.any():
+                pdf.loc[rule_mask, "predicted_cluster"] = pdf.loc[rule_mask, "cluster"]
+                pdf.loc[rule_mask, "confidence"]        = _np.float32(1.0)
+                pdf.loc[rule_mask, "decision"]          = "rule"
+
+            # ML rows — score with XGBoost
+            if ml_mask.any():
+                X    = _build_features_local(pdf.loc[ml_mask].copy())
+                prob = _model.predict_proba(X)
+                idx  = _np.argmax(prob, axis=1)
+                conf = prob[_np.arange(len(prob)), idx].astype(_np.float32)
+
+                pdf.loc[ml_mask, "predicted_cluster"] = list(_label_enc.inverse_transform(idx))
+                pdf.loc[ml_mask, "confidence"]        = list(conf)
+                pdf.loc[ml_mask, "decision"] = _np.where(
+                    conf >= _threshold, "ml", "need_review"
+                ).tolist()
+
+            pdf["reported_date"] = _dt_local.date.today()
+            yield pdf
+
+    return (
+        df.select(avail)
+          .repartition(_n_parts)
+          .mapInPandas(_score_partition, schema=output_schema)
+    )
+
+
+print("Score OK")
+
+
+# =============================================================================
+# CELL 8 — KEYWORD RULES
+# =============================================================================
+# _KEYWORD_RULES_BASE is the hardcoded baseline — always used.
+#
+# When cluster_rules_excel IS set in PATHS:
+#   - Excel rules are loaded and MERGED with this base list.
+#   - Same first keyword → Excel cluster wins (AP team updates take effect).
+#   - New keywords in Excel → appended to the list.
+#   - Keywords only in code → kept (never silently deleted by the Excel).
+#
+# Source: Cluster_Rules.xlsx → Sheet "Keyword Rules" + "Generic Rules"
+# =============================================================================
+
+_KEYWORD_RULES_BASE = [
+    # ── Single keywords ────────────────────────────────────────────────────────
+    (("permit",),                        "Permits",                               "kw=permit"),
+    (("apple",),                         "Apple Related Parts",                   "kw=apple"),
+    (("ipad",),                          "Apple Related Parts",                   "kw=ipad"),
+    (("keyboard",),                      "Computer Equipment",                    "kw=keyboard"),
+    (("keyboards",),                     "Computer Equipment",                    "kw=keyboards"),
+    (("repair",),                        "Repair Services",                       "kw=repair"),
+    (("maintenance",),                   "Maintenance Services",                  "kw=maintenance"),
+    (("insurance",),                     "Insurance Services",                    "kw=insurance"),
+    (("hygiene",),                       "Hygiene Materials",                     "kw=hygiene"),
+    (("janitor",),                       "Janitorial Services",                   "kw=janitor"),
+    (("labor",),                         "3rd Party Labor",                       "kw=labor"),
+    (("lease",),                         "Operating Lease",                       "kw=lease"),
+    (("pest",),                          "Pest Control Services",                 "kw=pest"),
+    (("propane",),                       "Propane / Fuels",                       "kw=propane"),
+    (("professional",),                  "Professional Service",                  "kw=professional"),
+    (("overpayment",),                   "Overpayment Recovery",                  "kw=overpayment"),
+    (("screw",),                         "Tools & Testing Equipment",             "kw=screw"),
+    (("software",),                      "SaaS",                                  "kw=software"),
+    (("copper",),                        "Cable - Metallic",                      "kw=copper"),
+    (("commscope",),                     "Distribution Equipment",                "kw=commscope"),
+    (("fiberglass",),                    "Tools & Testing Equipment",             "kw=fiberglass"),
+    (("landscap",),                      "Landscaping Services",                  "kw=landscap"),
+
+    # ── Multi-keyword rules (OR logic — any one of the keywords fires the rule) ─
+    (("pole", "letter", "conduit"),      "Miscellaneous Materials - Telecom",     "kw=pole-conduit"),
+    (("tape", "plastic", "steel", "panel"), "Miscellaneous Materials",            "kw=tape-steel"),
+    (("cleaner", "wipe"),                "Janitorial Materials",                  "kw=cleaner-wipe"),
+    (("gpon", "xgspon"),                 "Miscellaneous Materials - Telecom",     "kw=gpon"),
+    (("alarm", "security"),              "Security Service",                      "kw=alarm-security"),
+    (("badge", "nametag"),               "Miscellaneous Materials",               "kw=badge"),
+    (("nametag",),                       "Miscellaneous Materials",               "kw=nametag"),
+    (("boot", "rainwear"),               "Apparel",                               "kw=boot"),
+    (("drink", "beverage"),              "Food/Beverage",                         "kw=drink"),
+    (("fuel", "diesel", "refueling"),    "Propane / Fuels",                       "kw=fuel"),
+    (("safety glasses", "gloves"),       "Safety Equipment",                      "kw=safety-glasses"),
+
+    # ── Phrase keywords ─────────────────────────────────────────────────────────
+    (("cable stringing",),               "Tools & Testing Equipment",             "kw=cable-stringing"),
+    (("video surveillance",),            "Security Service",                      "kw=video-surv"),
+    (("purchase cost associated",),      "Purchase Cost Associated",              "kw=purchase-cost"),
+    (("real property",),                 "Real Property Repair/Remodel Service",  "kw=real-property"),
+    (("installation services",),         "Installation Services",                 "kw=install-svc"),
+    (("janitorial services",),           "Janitorial Services",                   "kw=jan-svc"),
+    (("data processing",),               "Data Processing",                       "kw=data-processing"),
+    (("charging cable",),                "Outside Plant Construction",            "kw=charging-cable"),
+    (("cell battery recycling",),        "3rd Party Labor",                       "kw=battery-recycling"),
+    (("ceeot",),                         "Installation Services - Telecom",       "kw=ceeot"),
+
+    # ── Broad single-word keywords — MUST stay at the end ─────────────────────
+    # These match too many things to be first; they only fire if nothing above matched.
+    (("cable",),                         "Distribution Equipment",                "kw=cable"),
+    (("fiber",),                         "Distribution Equipment",                "kw=fiber"),
+]
+
+
+def _load_keyword_rules_from_excel(excel_path):
+    """
+    Load keyword rules from Cluster_Rules.xlsx and merge them with
+    _KEYWORD_RULES_BASE using the following strategy:
+
+      - Hardcoded base rules are the foundation (always present).
+      - Excel rule with the same first keyword → OVERRIDES the hardcoded version.
+      - Excel rule with a new keyword          → APPENDED after the base list.
+      - Hardcoded rules not in the Excel       → KEPT unchanged.
+
+    This lets the AP team update rules in the Excel without touching the code,
+    while ensuring developer-added rules are never silently lost.
+
+    Reads two sheets:
+      "Keyword Rules" — direct keyword → cluster mappings.
+      "Generic Rules" — extracts description keyword patterns (e.g. "%ceeot%").
+
+    Returns:
+        Merged list of (keywords_tuple, cluster_name, label) tuples.
+    """
+    import subprocess, os, re as _re
+
+    # Copy the Excel from ADLS to the driver's local /tmp/
+    local_path = "/tmp/_cluster_rules_tmp.xlsx"
+    try:
+        dbutils.fs.cp(excel_path, f"file:{local_path}", recurse=False)
+    except NameError:
+        subprocess.run(
+            ["hdfs", "dfs", "-get", "-f", excel_path, local_path], check=True
+        )
+
+    # Normalise cluster names that differ between Excel and canonical code names
+    CLUSTER_FIXES = {
+        "cable-metallic":              "Cable - Metallic",
+        "cable - nonmetalic":          "Cable - Nonmetallic",
+        "cable nonmetalic":            "Cable - Nonmetallic",
+        "security service":            "Security Service",
+        "tools and testing equipment": "Tools & Testing Equipment",
+    }
+    def fix_cluster(name):
+        return CLUSTER_FIXES.get(str(name).strip().lower(), str(name).strip())
+
+    # Fix known typos in Excel rule text before parsing
+    RULE_FIXES = {"pannel": "panel", "cabel": "cable", "ectc": "extc"}
+    def fix_rule(text):
+        for wrong, right in RULE_FIXES.items():
+            text = text.replace(wrong, right)
+        return text
+
+    # Keywords that are too vague or are parsing artifacts — skip them
+    SKIP_KEYWORDS = {"data", "cabel", "cabel but", "cable but", "fiber and",
+                     "but", "or", "and", "not"}
+
+    try:
+        xl = pd.ExcelFile(local_path)
+    except Exception as ex:
+        os.remove(local_path)
+        raise RuntimeError(f"Cannot open Excel at {excel_path}: {ex}")
+
+    excel_rules = []   # collected (kws_tuple, cluster) pairs
+    seen_kw0    = set()  # deduplicate by first keyword
+
+    # -- Sheet 1: Keyword Rules -----------------------------------------------
+    try:
+        df_kw = xl.parse("Keyword Rules")
+    except Exception:
+        df_kw = xl.parse(0)
+        print("  Note: 'Keyword Rules' sheet not found — using first sheet")
+
+    for _, row in df_kw.dropna(subset=["RULE", "CLUSTER"]).iterrows():
+        raw     = fix_rule(str(row["RULE"]).strip().lower())
+        cluster = fix_cluster(row["CLUSTER"])
+
+        # Strip "but not …" qualifiers — negative conditions are handled by CELL 4
+        if "but not"    in raw: raw = raw.split("but not")[0].strip().strip("()")
+        if "should not" in raw: raw = raw.split("should not")[0].strip().strip("()")
+
+        # Long battery-style rows: extract the first meaningful short phrase
+        if len(raw) > 80:
+            parts = [p.strip() for p in raw.replace(";", ",").split(",")
+                     if 2 < len(p.strip()) < 30]
+            raw = parts[0] if parts else ""
+
+        if not raw or raw in SKIP_KEYWORDS:
+            continue
+
+        kws = tuple(k.strip() for k in raw.replace("/", ",").split(",")
+                    if k.strip() and len(k.strip()) > 1)
+        if not kws or kws[0] in seen_kw0:
+            continue
+        seen_kw0.add(kws[0])
+        excel_rules.append((kws, cluster))
+
+    # -- Sheet 2: Generic Rules — extract description keyword patterns only ---
+    try:
+        df_gen = xl.parse("Generic Rules")
+        BAD_KW = {"base service", "landscape gravel", "fiber", "fiber and",
+                  "account_code", "extc", "mic", "vendor_name"}
+        for _, row in df_gen.dropna(subset=["RULE", "CLUSTER"]).iterrows():
+            raw     = str(row["RULE"]).strip().lower()
+            cluster = fix_cluster(row["CLUSTER"])
+            match   = _re.search(r"description\s*=\s*%?([a-zA-Z0-9 _-]{3,30})%?", raw)
+            if match:
+                kw = match.group(1).strip()
+                if kw and kw not in BAD_KW and "account" not in kw and len(kw) > 3 and kw not in seen_kw0:
+                    seen_kw0.add(kw)
+                    excel_rules.append(((kw,), cluster))
+    except Exception as ex:
+        print(f"  Note: Generic Rules sheet issue: {ex}")
+
+    os.remove(local_path)
+
+    # -- Merge Excel rules into the hardcoded base list -----------------------
+    merged   = list(_KEYWORD_RULES_BASE)
+    hc_index = {rule[0][0]: i for i, rule in enumerate(merged)}
+
+    overrides = []
+    additions = []
+    for ex_kws, ex_cluster in excel_rules:
+        kw0 = ex_kws[0]
+        lbl = f"kw_xl={kw0[:20]}"
+        if kw0 in hc_index:
+            old_cluster = merged[hc_index[kw0]][1]
+            merged[hc_index[kw0]] = (ex_kws, ex_cluster, lbl)
+            if old_cluster != ex_cluster:
+                overrides.append(f"  '{kw0}': '{old_cluster}' → '{ex_cluster}'")
+        else:
+            merged.append((ex_kws, ex_cluster, lbl))
+            hc_index[kw0] = len(merged) - 1
+            additions.append(f"  '{kw0}' → '{ex_cluster}'")
+
+    # Print a clear summary of what changed
+    print(f"  Excel merge summary:")
+    print(f"    Hardcoded base : {len(_KEYWORD_RULES_BASE)} rules")
+    print(f"    From Excel     : {len(excel_rules)} rules")
+    print(f"    Overrides      : {len(overrides)}")
+    print(f"    New additions  : {len(additions)}")
+    print(f"    Final total    : {len(merged)} rules")
+    for line in overrides:        print(f"    OVERRIDE {line}")
+    for line in additions[:5]:    print(f"    NEW     {line}")
+    if len(additions) > 5:        print(f"    ... and {len(additions)-5} more")
+
+    return merged
+
+
+# -- Decide which keyword rules to use ----------------------------------------
+_excel_path = PATHS.get("cluster_rules_excel")
+
+if _excel_path:
+    print(f"\n  cluster_rules_excel set → merging Excel rules with hardcoded base …")
+    KEYWORD_RULES = _load_keyword_rules_from_excel(_excel_path)
+else:
+    print("  cluster_rules_excel not set → using hardcoded keyword rules only")
+    KEYWORD_RULES = _KEYWORD_RULES_BASE
+
+print(f"  Keyword rules ready: {len(KEYWORD_RULES)} rules ✓")
+print("Keyword rules ready ✓")
+
+
+# =============================================================================
+# CELL 9 — RUN
+# =============================================================================
+
+print("=" * 60)
+print("  AP TAX PIPELINE — CLUSTER PREDICTION")
+print("=" * 60)
+_run_start = _dt.datetime.now()
+
+# -- Validate config -----------------------------------------------------------
+if "daily_invoices" not in PATHS:
+    raise ValueError("PATHS['daily_invoices'] is required but not set.")
+
+_mo_parts = INVOICE_MONTH.split("-")
+if (len(_mo_parts) != 2
+        or not _mo_parts[0].isdigit()
+        or not _mo_parts[1].isdigit()
+        or not 1 <= int(_mo_parts[1]) <= 12):
+    raise ValueError(f"INVOICE_MONTH must be 'YYYY-MM', got: {INVOICE_MONTH!r}")
+
+DAILY_PATH = PATHS["daily_invoices"]
+HIST_PATH  = PATHS.get("historical_labeled")
+OUT_PATH   = PATHS.get("reports_output")
+
+# Date range: score current month, train on everything before it
+_yr, _mo = int(_mo_parts[0]), int(_mo_parts[1])
+_start   = f"{INVOICE_MONTH}-01"
+_end     = f"{(_dt.date(_yr, _mo, 1) + _dt.timedelta(days=32)).replace(day=1).strftime('%Y-%m')}-01"
+
+print(f"  Scoring month  : {INVOICE_MONTH}  ({_start} to {_end})")
+print(f"  Training data  : {'historical_labeled + daily_invoices' if HIST_PATH else 'daily_invoices (months before ' + INVOICE_MONTH + ')'}")
+print(f"  Rules source   : {'Excel: ' + str(_excel_path) if _excel_path else 'hardcoded'}")
+print(f"  Output path    : {OUT_PATH or '/tmp/ (default)'}")
+
+# Helper: wraps build_labels so KEYWORD_RULES is always passed in
+def _label(df):
+    return build_labels(df, keyword_rules=KEYWORD_RULES)
+
+# -- [1/4] Load and label historical (training) data --------------------------
+print(f"\n[1/4] Loading historical training data …")
+
+df_daily_hist = (
+    spark.read.format("delta").load(DAILY_PATH)
+    .filter(col(COLS["accounting_date"]) < _start)
+)
+if HIST_PATH:
+    df_extra   = spark.read.format("delta").load(HIST_PATH)
+    df_hist_raw = df_daily_hist.unionByName(df_extra, allowMissingColumns=True)
+    print("  Source: daily_invoices + historical_labeled")
+else:
+    df_hist_raw = df_daily_hist
+    print(f"  Source: daily_invoices (all months before {INVOICE_MONTH})")
+
+if SAMPLE_LIMIT:
+    df_hist_raw = df_hist_raw.limit(SAMPLE_LIMIT)
+    print(f"  SAMPLE MODE: capped at {SAMPLE_LIMIT:,} rows")
+
+df_hist    = df_hist_raw.transform(_label).cache()
+hist_count = df_hist.count()
+print(f"  Labelled + cached ✓  ({hist_count:,} rows)")
+_rule_hist = df_hist.filter(col("label_source") == "rule").count()
+_rule_pct  = _rule_hist / hist_count * 100 if hist_count else 0
+print(f"  Rule coverage  : {_rule_hist:,} ({_rule_pct:.1f}%)")
+if _rule_pct < 20:
+    print("  ⚠  WARNING: rule coverage < 20% — check rules or data quality")
+
+# -- [2/4] Load and label current month (to score) ----------------------------
+print(f"\n[2/4] Loading current month ({INVOICE_MONTH}) …")
+
+df_curr_raw = (
+    spark.read.format("delta").load(DAILY_PATH)
+    .filter((col(COLS["accounting_date"]) >= _start) &
+            (col(COLS["accounting_date"]) <  _end))
+)
+if SAMPLE_LIMIT:
+    df_curr_raw = df_curr_raw.limit(SAMPLE_LIMIT)
+
+df_curr    = df_curr_raw.transform(_label).cache()
+curr_count = df_curr.count()
+print(f"  Labelled + cached ✓  ({curr_count:,} rows)")
+
+if curr_count == 0:
+    raise ValueError(
+        f"No invoices found for INVOICE_MONTH={INVOICE_MONTH!r}. "
+        "Check the date range and DAILY_PATH."
+    )
+
+# -- [3/4] Train --------------------------------------------------------------
+print("\n[3/4] Training …")
+model, tfidf, tfidf_vendor, cat_enc, label_enc = train(df_hist, df_curr_eval=df_curr)
+df_hist.unpersist()
+print("  Historical cache released ✓")
+print("  Model and encoders ready for scoring ✓")
+
+# -- [4/4] Score (distributed) ------------------------------------------------
+print("\n[4/4] Scoring …")
+# Note: on small sample data, need_review will be high because the model trains
+# on fewer examples and assigns lower confidence. In production (millions of rows)
+# expect need_review < 30%.
+df_predictions = score(df_curr, model, tfidf, tfidf_vendor, cat_enc, label_enc).cache()
+
+summary = (
+    df_predictions.groupBy("decision")
+    .agg(count("*").alias("n"))
+    .toPandas()
+    .sort_values("n", ascending=False)
+)
+total = int(summary["n"].sum())
+
+print("\n  Results:")
+for _, row in summary.iterrows():
+    pct = row["n"] / total * 100
+    bar = chr(9608) * int(pct / 2)
+    print(f"    {row['decision']:<15}  {int(row['n']):>8,}  {pct:>5.1f}%  {bar}")
+print(f"    {'─'*50}")
+print(f"    {'TOTAL':<15}  {total:>8,}")
+
+df_curr.unpersist()
+
+# -- [5/4] Save output --------------------------------------------------------
+_out_file = f"ap_tax_predictions_{INVOICE_MONTH}"
+
+if OUT_PATH:
+    _full_out = f"{OUT_PATH.rstrip('/')}/{_out_file}.parquet"
+    df_predictions.write.mode("overwrite").parquet(_full_out)
+    print(f"\n  Saved to ADLS: {_full_out}")
+else:
+    _full_out = f"/tmp/{_out_file}.csv"
+    df_predictions.toPandas().to_csv(_full_out, index=False)
+    print(f"\n  Saved locally: {_full_out}")
+
+_elapsed = _dt.datetime.now() - _run_start
+print(f"\n✓  DONE  ({_elapsed.total_seconds():.0f}s elapsed)")
+print(f"   df_predictions  —  Spark DataFrame, {total:,} rows")
+print(f"   Columns: {df_predictions.columns}")
+print()
+print("   Quick filters:")
+print("     df_predictions.filter(col('decision') == 'need_review').show()")
+print("     df_predictions.filter(col('decision') == 'ml').show()")
+print("     df_predictions.filter(col('decision') == 'rule').show()")
