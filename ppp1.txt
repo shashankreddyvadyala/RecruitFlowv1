@@ -1,1 +1,6 @@
 
+[4/4] Scoring …
+PythonException: 
+  An exception was thrown from the Python worker. Please see the stack trace below.
+Traceback (most recent call last):
+  File "/databricks/spark/python/pyspark/serializers.py", line 193, in _read_with_length
