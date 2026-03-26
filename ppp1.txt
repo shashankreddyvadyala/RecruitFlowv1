@@ -1,1 +1,47 @@
 
+Imports OK
+Config OK
+Rules engine OK
+Features OK
+Train OK
+Score OK
+  cluster_rules_excel not set → using hardcoded keyword rules only
+  Keyword rules ready: 45 rules ✓
+Keyword rules ready ✓
+============================================================
+  AP TAX PIPELINE — CLUSTER PREDICTION
+============================================================
+  Scoring month  : 2022-01  (2022-01-01 to 2022-02-01)
+  Training data  : daily_invoices (months before 2022-01)
+  Rules source   : hardcoded
+  Output path    : /tmp/ (default)
+
+[1/4] Loading historical training data …
+  Source: daily_invoices (all months before 2022-01)
+  SAMPLE MODE: capped at 50,000 rows
+  Rule coverage: 49,127 / 50,000 (98.3%)  → ML needed: 873
+  Labelled + cached ✓  (50,000 rows)
+  Rule coverage  : 49,186 (98.4%)
+
+[2/4] Loading current month (2022-01) …
+  Rule coverage: 48,146 / 50,000 (96.3%)  → ML needed: 1,854
+  Labelled + cached ✓  (50,000 rows)
+
+[3/4] Training …
+  49,186 labelled rows  |  39 valid clusters (≥10 rows each)
+  Training sample: 37,861 rows pulled to driver
+  Feature matrix: 37,861 rows × 9,008 features
+  Eval set: current-month out-of-time (19,466 rows)  |  39 clusters
+  Training XGBoost …
+  Best iteration : 499 / 500 trees
+  Eval accuracy  : 0.9639
+  Weighted F1    : 0.9605
+  Historical cache released ✓
+  Model and encoders ready for scoring ✓
+
+[4/4] Scoring …
+
+PythonException: 
+  An exception was thrown from the Python worker. Please see the stack trace below.
+Traceback (most recent call last):
+  File "/databricks/spark/python/pyspark/serializers.py", line 193, in _read_with_length
