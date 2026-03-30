@@ -1,1 +1,2 @@
 
+PySparkTypeError: Exception thrown when converting pandas.Series (object) with name 'reported_date' to Arrow Array (date32[day]).
