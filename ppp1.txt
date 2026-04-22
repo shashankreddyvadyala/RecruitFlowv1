@@ -1,1 +1,16 @@
+============================================================
+  AP TAX PIPELINE  —  MLflow + Dynamic Rules
+============================================================
 
+[0/4] Rules source : HARDCODED (RULES_PATH=None)
+  ✓ 141 enabled rules  |  Parker Volpe: 28  Generic: 79  Keyword: 34
+  ✓ Rules version hash: 4bd353af0826
+PermissionError: [Errno 13] Permission denied: '/mnt/user-data'
+[Trace ID: 00-18ac8a19ed3134242a1686d792a797d3-ef33a55b2ff453c3-00]
+File <command-8427657163059566>, line 758
+    756 # ── MLflow setup ──────────────────────────────────────────────────────────
+    757 mlflow.set_tracking_uri(f"file://</span><span class="ansi-bold">{MLFLOW_DIR}")
+--> 758 mlflow.set_experiment(EXPERIMENT)
+    760 with mlflow.start_run(run_name=f"ap_tax_{_dt.date.today()}") as run:
+    761     print(f"\n  MLflow run ID : {run.info.run_id}")
+File <frozen os>:225, in makedirs(name, mode, exist_ok)
