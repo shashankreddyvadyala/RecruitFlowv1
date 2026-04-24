@@ -1,16 +1,907 @@
-============================================================
-  AP TAX PIPELINE  —  MLflow + Dynamic Rules
-============================================================
+%pip install lightgbm xgboost scikit-learn mlflow openpyxl "typing_extensions>=4.12.0"
 
-[0/4] Rules source : HARDCODED (RULES_PATH=None)
-  ✓ 141 enabled rules  |  Parker Volpe: 28  Generic: 79  Keyword: 34
-  ✓ Rules version hash: 4bd353af0826
-PermissionError: [Errno 13] Permission denied: '/mnt/user-data'
-[Trace ID: 00-18ac8a19ed3134242a1686d792a797d3-ef33a55b2ff453c3-00]
-File <command-8427657163059566>, line 758
-    756 # ── MLflow setup ──────────────────────────────────────────────────────────
-    757 mlflow.set_tracking_uri(f"file://</span><span class="ansi-bold">{MLFLOW_DIR}")
---> 758 mlflow.set_experiment(EXPERIMENT)
-    760 with mlflow.start_run(run_name=f"ap_tax_{_dt.date.today()}") as run:
-    761     print(f"\n  MLflow run ID : {run.info.run_id}")
-File <frozen os>:225, in makedirs(name, mode, exist_ok)
+import os
+import pickle
+import hashlib
+import numpy as np
+import pandas as pd
+import mlflow
+import mlflow.xgboost
+import mlflow.lightgbm
+import mlflow.sklearn
+from mlflow import MlflowClient
+
+from datetime import datetime
+from xgboost import XGBClassifier
+import lightgbm as lgb_lib
+from lightgbm import LGBMClassifier, Booster
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import LabelEncoder, normalize
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.cluster import KMeans
+from sklearn.metrics import accuracy_score, f1_score, silhouette_score
+
+from pyspark.sql import functions as F
+from pyspark.sql.functions import col, when, lit, lower, concat_ws, coalesce, count, avg
+from pyspark.sql.types import StringType, FloatType, StructType, StructField
+
+print("✓ Imports OK")
+
+MODE          = "train"    # "train" on first run, then switch to "inference"
+INVOICE_MONTH = "2022-01"  # Inference only — format: "YYYY-MM"
+
+# Unity Catalog model registry settings
+UC_MODEL_NAME = "31500_atims_dev.atims_taxability.xgboost_non_norad"
+MLFLOW_EXPERIMENT = "/Workspace/Shared/ATIMS_Source/Taxability_MLFlow_Experiment_2"
+
+# Promotion thresholds — tune these to your known baseline
+ACCURACY_FLOOR   = 0.80   # absolute minimum ensemble accuracy required
+REGRESSION_FLOOR = 0.005  # max allowed drop vs current champion (0.5%)
+
+PATHS = {
+    "daily_invoices": "abfss://atims@nprdatimsstore.dfs.core.windows.net/TAXABILITY_DATA/ML_INPUT",
+
+    # ⏸ Optional — uncomment when ready
+    # "historical_labeled":  "abfss://...",
+    # "prediction_store":    "abfss://...",
+    # "reports_output":      "abfss://...",
+    # "cluster_rules_excel": "abfss://...",
+    # "cluster_account_map": "abfss://...",
+}
+
+COLS = {
+    "invoice_id":           "INVOICE_ID",
+    "inv_line_number":      "INV_LINE_NUMBER",
+    "invoice_num":          "INVOICE_NUM",
+    "accounting_date":      "ACCOUNTING_DATE",
+    "line_description":     "LINE_DESCRIPTION",
+    "description":          "DESCRIPTION",
+    "dist_all_description": "DIST_ALL_DESCRIPTION",
+    "extc":                 "EXTC_CODE",
+    "mic":                  "MIC",
+    "account_code":         "ACCOUNT_CODE",
+    "vendor_name":          "VENDOR_NAME",
+    "company_code":         "COMPANY_CODE",
+    "state":                "STATE",
+    "invoice_source":       "INVOICE_SOURCE",
+    "tran_amount":          "TRAN_AMOUNT",
+}
+
+MODEL_CONFIG = {
+    "max_training_rows":  50_000,
+    "min_class_samples":  10,
+    "test_size":          0.20,
+    "random_seed":        42,
+
+    "tfidf_max_features": 10_000,
+
+    "xgb_params": {
+        "n_estimators":     300,
+        "max_depth":        6,
+        "learning_rate":    0.05,
+        "subsample":        0.8,
+        "colsample_bytree": 0.8,
+        "eval_metric":      "mlogloss",
+        "tree_method":      "hist",
+        "grow_policy":      "lossguide",
+        "random_state":     42,
+        "n_jobs":           -1,
+    },
+    "lgb_params": {
+        "n_estimators":      300,
+        "max_depth":         -1,
+        "learning_rate":     0.05,
+        "subsample":         0.8,
+        "colsample_bytree":  0.8,
+        "num_leaves":        63,
+        "min_child_samples": 20,
+        "random_state":      42,
+        "n_jobs":            -1,
+        "verbose":           -1,
+    },
+    "ensemble_weights": {"xgb": 0.5, "lgb": 0.5},
+}
+
+THRESHOLDS = {
+    "accept_conf": 0.60,
+}
+
+DISCOVERY_CONFIG = {
+    "max_clusters":        10,
+    "min_cluster_size":    5,
+    "samples_per_cluster": 5,
+    "random_seed":         42,
+}
+
+# Set the experiment once — applies to all mlflow.start_run() calls in this notebook
+MLFLOW_ARTIFACT_ROOT = "dbfs:/Volumes/31500_atims_dev/atims_taxability/mlflow_artifacts"
+
+# Create experiment at the shared workspace path with UC Volume artifact storage.
+# Falls back gracefully if it already exists (e.g. re-running the cell).
+try:
+    experiment_id = mlflow.create_experiment(
+        name=MLFLOW_EXPERIMENT,
+        artifact_location=MLFLOW_ARTIFACT_ROOT,
+    )
+    print(f"   ✓ Experiment created (id={experiment_id})")
+except mlflow.exceptions.MlflowException as e:
+    if "already exists" in str(e):
+        print("   ℹ Experiment already exists — reusing it.")
+    else:
+        raise
+mlflow.set_experiment(MLFLOW_EXPERIMENT)
+
+print("✓ Config OK")
+
+def save_artifacts(xgb, lgb, label_enc, cat_encoders, run_id):
+    """
+    Register XGBoost from the completed MLflow run into Unity Catalog.
+    Registers as @challenger — call promote_if_better() to move to @champion.
+    LightGBM, label_encoder, and tfidf are logged as run artifacts only.
+    """
+    mlflow.set_registry_uri("databricks-uc")
+
+    registered = mlflow.register_model(
+        model_uri=f"runs:/{run_id}/xgb_model",
+        name=UC_MODEL_NAME,
+    )
+
+    client = MlflowClient()
+    client.set_registered_model_alias(UC_MODEL_NAME, "challenger", registered.version)
+
+    print(f"   ✓ Registered v{registered.version} as @challenger in {UC_MODEL_NAME}")
+    return registered
+
+
+def load_artifacts():
+    """
+    Load the @champion XGBoost model + preprocessing artifacts from MLflow registry.
+    Replaces the DBFS pickle-based load_artifacts().
+    """
+    global _tfidf_vec
+
+    mlflow.set_registry_uri("databricks-uc")
+
+    xgb = mlflow.xgboost.load_model(f"models:/{UC_MODEL_NAME}@champion")
+
+    # Load preprocessing artifacts — resolved from the champion version's source run
+    client     = MlflowClient()
+    champion   = client.get_model_version_by_alias(UC_MODEL_NAME, "champion")
+    run_id     = champion.run_id
+
+    label_enc  = mlflow.sklearn.load_model(f"runs:/{run_id}/label_encoder")
+    _tfidf_vec = mlflow.sklearn.load_model(f"runs:/{run_id}/tfidf_vectorizer")
+
+    print(f"   ✓ Artifacts loaded from @champion (run: {run_id})")
+    return xgb, label_enc
+
+
+def promote_if_better(run_id, new_ens_acc, new_ens_f1):
+    """
+    Compare the newly trained challenger against the current champion.
+    Promotes @challenger to @champion only if regression tests pass.
+    Called automatically at the end of train_models() when MODE == 'train'.
+    """
+    mlflow.set_registry_uri("databricks-uc")
+    client = MlflowClient()
+
+    # Get current champion metrics for comparison
+    try:
+        champion     = client.get_model_version_by_alias(UC_MODEL_NAME, "champion")
+        champ_run    = client.get_run(champion.run_id)
+        champ_acc    = champ_run.data.metrics.get("ens_acc", 0.0)
+        champ_ver    = champion.version
+    except Exception:
+        champ_acc  = 0.0
+        champ_ver  = None
+        print("   ℹ No existing champion — first promotion will succeed if floor is met.")
+
+    passed = (
+        new_ens_acc >= ACCURACY_FLOOR and
+        new_ens_acc >= champ_acc - REGRESSION_FLOOR
+    )
+
+    # Log the regression test result back to the run
+    with mlflow.start_run(run_id=run_id):
+        mlflow.log_metrics({
+            "regression_test_passed": int(passed),
+            "champ_ens_acc_at_eval":  champ_acc,
+            "acc_delta_vs_champion":  round(new_ens_acc - champ_acc, 6),
+        })
+
+    if passed:
+        challenger = client.get_model_version_by_alias(UC_MODEL_NAME, "challenger")
+        client.set_registered_model_alias(UC_MODEL_NAME, "champion", challenger.version)
+        print(f"   ✓ Promoted v{challenger.version} to @champion")
+        print(f"     new={new_ens_acc:.4f}  prev_champion={champ_acc:.4f}")
+    else:
+        print(f"   ✗ Regression test FAILED — @champion unchanged (v{champ_ver})")
+        print(f"     new={new_ens_acc:.4f}  champion={champ_acc:.4f}")
+        print(f"     floor={ACCURACY_FLOOR}  max_drop={REGRESSION_FLOOR}")
+
+    return passed
+
+
+print("✓ MLflow artifact functions OK")
+
+def train_models(df):
+    cfg = MODEL_CONFIG
+
+    print("   Pulling rule-labeled records...")
+    select_cols = (["final_description", "label_account_code"]
+                   + CAT_COLS + [COLS["vendor_name"], COLS["tran_amount"]])
+    available   = [c for c in select_cols if c in df.columns]
+
+    df_labeled = (df.filter(col("label_source") == "rule")
+                    .select(available)
+                    .dropna(subset=["label_account_code"]))
+    total = df_labeled.count()
+    print(f"   Available: {total:,}")
+
+    class_counts  = df_labeled.groupBy("label_account_code").agg(count("*").alias("n"))
+    valid_classes = [r["label_account_code"] for r in
+                     class_counts.filter(col("n") >= cfg["min_class_samples"]).collect()]
+    df_labeled    = df_labeled.filter(col("label_account_code").isin(valid_classes))
+    after         = df_labeled.count()
+    if after < total:
+        print(f"   Dropped {total-after:,} rows from rare classes")
+
+    if after > cfg["max_training_rows"]:
+        df_labeled = df_labeled.sample(fraction=cfg["max_training_rows"]/after,
+                                       seed=cfg["random_seed"])
+        print(f"   Sampled to ~{cfg['max_training_rows']:,} rows")
+
+    pdf = df_labeled.toPandas()
+    if len(pdf) > cfg["max_training_rows"]:
+        pdf = pdf.sample(n=cfg["max_training_rows"], random_state=cfg["random_seed"]).reset_index(drop=True)
+        print(f"   Hard-capped to {len(pdf):,} rows")
+    print(f"   Training on {len(pdf):,} records")
+
+    label_enc = LabelEncoder()
+    y         = label_enc.fit_transform(pdf["label_account_code"].astype(str))
+    X, cat_encoders = build_feature_matrix(pdf, fit=True)
+    print(f"   Feature matrix: {X.shape[0]:,} × {X.shape[1]:,}")
+    del pdf
+
+    min_count    = np.bincount(y).min()
+    use_stratify = y if min_count >= 2 else None
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=cfg["test_size"],
+        random_state=cfg["random_seed"], stratify=use_stratify
+    )
+    del X, y
+
+    train_enc           = LabelEncoder().fit(y_train)
+    y_train             = train_enc.transform(y_train)
+    test_mask           = np.isin(y_test, train_enc.classes_)
+    X_test              = X_test[test_mask]
+    y_test              = train_enc.transform(y_test[test_mask])
+    label_enc.classes_  = label_enc.classes_[train_enc.classes_]
+    n_classes           = len(label_enc.classes_)
+    print(f"   Classes: {n_classes}  |  Test rows: {len(X_test):,}")
+
+    # ── MLflow run wraps all training + artifact logging ──────────────────────
+    run_name = f"train_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    with mlflow.start_run(run_name=run_name) as run:
+        run_id = run.info.run_id
+
+        mlflow.log_params({
+            "max_training_rows":     cfg["max_training_rows"],
+            "test_size":             cfg["test_size"],
+            "tfidf_max_features":    cfg["tfidf_max_features"],
+            "xgb_n_estimators":      cfg["xgb_params"]["n_estimators"],
+            "xgb_max_depth":         cfg["xgb_params"]["max_depth"],
+            "xgb_learning_rate":     cfg["xgb_params"]["learning_rate"],
+            "lgb_n_estimators":      cfg["lgb_params"]["n_estimators"],
+            "lgb_num_leaves":        cfg["lgb_params"]["num_leaves"],
+            "ensemble_weight_xgb":   cfg["ensemble_weights"]["xgb"],
+            "accept_conf_threshold": THRESHOLDS["accept_conf"],
+            "n_classes":             n_classes,
+            "n_training_rows":       len(X_train),
+            "invoice_month":         INVOICE_MONTH,
+        })
+
+        print("   Training XGBoost...")
+        xgb = XGBClassifier(**cfg["xgb_params"], objective="multi:softprob", num_class=n_classes)
+        xgb.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=50)
+        xgb_acc = accuracy_score(y_test, xgb.predict(X_test))
+        xgb_f1  = f1_score(y_test, xgb.predict(X_test), average="weighted", zero_division=0)
+        print(f"   XGBoost  → acc={xgb_acc:.4f}  f1={xgb_f1:.4f}")
+
+        print("   Training LightGBM...")
+        lgb = LGBMClassifier(**cfg["lgb_params"], objective="multiclass", num_class=n_classes)
+        lgb.fit(X_train, y_train, eval_set=[(X_test, y_test)],
+                callbacks=[lgb_lib.early_stopping(20, verbose=False), lgb_lib.log_evaluation(50)])
+        lgb_acc = accuracy_score(y_test, lgb.predict(X_test))
+        lgb_f1  = f1_score(y_test, lgb.predict(X_test), average="weighted", zero_division=0)
+        print(f"   LightGBM → acc={lgb_acc:.4f}  f1={lgb_f1:.4f}")
+
+        w_xgb = cfg["ensemble_weights"]["xgb"]
+        w_lgb = cfg["ensemble_weights"]["lgb"]
+        ens   = w_xgb * xgb.predict_proba(X_test) + w_lgb * lgb.predict_proba(X_test)
+        ens_acc = accuracy_score(y_test, np.argmax(ens, 1))
+        ens_f1  = f1_score(y_test, np.argmax(ens, 1), average="weighted", zero_division=0)
+        print(f"   Ensemble → acc={ens_acc:.4f}  f1={ens_f1:.4f}")
+
+        mlflow.log_metrics({
+            "xgb_acc": xgb_acc, "xgb_f1": xgb_f1,
+            "lgb_acc": lgb_acc, "lgb_f1": lgb_f1,
+            "ens_acc": ens_acc, "ens_f1": ens_f1,
+        })
+
+        # Log all model artifacts into the run
+        mlflow.xgboost.log_model(xgb,        artifact_path="xgb_model")
+        mlflow.lightgbm.log_model(lgb,        artifact_path="lgb_model")
+        mlflow.sklearn.log_model(label_enc,   artifact_path="label_encoder")
+        mlflow.sklearn.log_model(_tfidf_vec,  artifact_path="tfidf_vectorizer")
+
+        print(f"   ✓ MLflow run logged: {run_id}")
+
+    # Register + auto-promote outside the run context
+    save_artifacts(xgb, lgb, label_enc, cat_encoders, run_id)
+    promote_if_better(run_id, ens_acc, ens_f1)
+
+    return xgb, lgb, label_enc, cat_encoders, run_id
+
+
+print("✓ Model training OK")
+
+def load_rules(excel_path=None):
+    if not excel_path:
+        print("   [RULES] No Excel path — all invoices go to ML.")
+        empty = pd.DataFrame(columns=["rule", "cluster"])
+        return {"keyword": empty, "generic": empty, "parker_volpe": pd.DataFrame()}
+
+    local_path = "/tmp/cluster_rules.xlsx"
+    dbutils.fs.cp(excel_path, f"file:{local_path}", recurse=False)
+
+    keyword_df = pd.read_excel(local_path, sheet_name="Keyword Rules")
+    generic_df = pd.read_excel(local_path, sheet_name="Generic Rules")
+    pv_raw     = pd.read_excel(local_path, sheet_name="Parker Volpe - Rules")
+
+    keyword_df.columns = ["rule", "cluster", "generic_satisfied"]
+    generic_df.columns = ["rule", "cluster", "generic_satisfied", "notes"]
+
+    rules = {
+        "keyword":      keyword_df.dropna(subset=["rule", "cluster"]),
+        "generic":      generic_df.dropna(subset=["rule", "cluster"]),
+        "parker_volpe": _parse_parker_volpe(pv_raw),
+    }
+    print(f"   Keyword: {len(rules['keyword'])}  Generic: {len(rules['generic'])}  Parker Volpe: {len(rules['parker_volpe'])}")
+    return rules
+
+def _parse_parker_volpe(raw):
+    records = []
+    records.append({"extc": "69A", "cluster": "Operating Lease", "rule_type": "extc_only"})
+
+    for _, row in raw.iloc[6:18, :2].dropna(how="all").iterrows():
+        if pd.notna(row.iloc[0]) and pd.notna(row.iloc[1]):
+            records.append({"vendor_name": str(row.iloc[0]).strip(), "cluster": str(row.iloc[1]).strip(), "rule_type": "vendor_only"})
+
+    for _, row in raw.iloc[21:29, :3].dropna(how="all").iterrows():
+        if pd.notna(row.iloc[0]) and pd.notna(row.iloc[2]):
+            records.append({"vendor_name": str(row.iloc[0]).strip(), "extc": str(row.iloc[1]).strip(), "cluster": str(row.iloc[2]).strip(), "rule_type": "vendor_extc"})
+
+    for _, row in raw.iloc[32:42, :3].dropna(how="all").iterrows():
+        if pd.notna(row.iloc[0]) and pd.notna(row.iloc[2]):
+            records.append({"vendor_name": str(row.iloc[0]).strip(), "description_keyword": str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "", "cluster": str(row.iloc[2]).strip(), "rule_type": "vendor_desc"})
+
+    for _, row in raw.iloc[45:50, :4].dropna(how="all").iterrows():
+        if pd.notna(row.iloc[0]) and pd.notna(row.iloc[3]):
+            records.append({"vendor_name": str(row.iloc[0]).strip(), "description_keyword": str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "", "extc": str(row.iloc[2]).strip(), "cluster": str(row.iloc[3]).strip(), "rule_type": "vendor_desc_extc"})
+
+    return pd.DataFrame(records)
+
+
+def _assign(df, condition, cluster_name, rule_label):
+    """Overwrite cluster/rule_matched where condition is True. Later calls win = higher priority."""
+    return (
+        df.withColumn("cluster",      when(condition, lit(cluster_name)).otherwise(col("cluster")))
+          .withColumn("rule_matched", when(condition, lit(rule_label)).otherwise(col("rule_matched")))
+    )
+
+
+def _desc_contains(*keywords):
+    """Spark condition: final_description contains ANY keyword (case-insensitive)."""
+    if not keywords:
+        return lit(False)
+    cond = lower(col("final_description")).like(f"%{keywords[0].lower()}%")
+    for kw in keywords[1:]:
+        cond = cond | lower(col("final_description")).like(f"%{kw.lower()}%")
+    return cond
+
+
+def build_final_description(df):
+    """
+    Combine text columns into one clean final_description.
+    Priority: LINE+DESC > LINE > DESC > DIST_ALL. Strips filler values.
+    """
+    filler = ["SCM Purchase", "SCM PURCHASE", "scm purchase"]
+
+    def _clean(c):
+        return when(col(c).isin(filler) | col(c).isNull(), lit(None)).otherwise(col(c))
+
+    df = (df.withColumn("_l", _clean(COLS["line_description"]))
+            .withColumn("_d", _clean(COLS["description"]))
+            .withColumn("_x", _clean(COLS["dist_all_description"])))
+
+    df = df.withColumn("final_description", coalesce(
+        when(col("_l").isNotNull() & col("_d").isNotNull(), concat_ws(" ", col("_l"), col("_d"))),
+        col("_l"), col("_d"), col("_x"), lit(""),
+    )).drop("_l", "_d", "_x")
+
+    return df
+
+
+def _apply_keyword_rules(df, keyword_rules):
+    if keyword_rules.empty:
+        return df
+    for _, rule in keyword_rules.iterrows():
+        raw = str(rule["rule"]).strip()
+        if "but not" in raw.lower():
+            base, excl_str = raw.lower().split("but not", 1)
+            excls = [e.strip() for e in excl_str.replace("(","").replace(")","").split(",")]
+            cond  = lower(col("final_description")).like(f"%{base.strip()}%")
+            for e in excls:
+                cond = cond & ~lower(col("final_description")).like(f"%{e}%")
+        elif "," in raw:
+            cond = _desc_contains(*[k.strip() for k in raw.split(",")])
+        else:
+            cond = lower(col("final_description")).like(f"%{raw.lower()}%")
+        df = _assign(df, cond, rule["cluster"], f"kw:{raw[:40]}")
+    return df
+
+def _apply_generic_rules(df):
+    MIC    = COLS["mic"]
+    EXTC   = COLS["extc"]
+    ACCT   = COLS["account_code"]
+    VENDOR = COLS["vendor_name"]
+    CO     = COLS["company_code"]
+
+    df = _assign(df, col(MIC) == "SW",                            "ERTU",                              "generic:mic=SW")
+    df = _assign(df, col(MIC).isin(["CPEMIS","CPERTR"]),          "CPE",                               "generic:mic=CPEMIS/CPERTR")
+    df = _assign(df, col(MIC) == "CEQ",                           "Computer Equipments",               "generic:mic=CEQ")
+    df = _assign(df, col(MIC).isin(["COE10K","CHROR1K"]),         "Miscellaneous Materials - Telecom", "generic:mic=COE10K/CHROR1K")
+    df = _assign(df, col(MIC).like("SEQ%"),                       "Network Equipment",                 "generic:mic=SEQ%")
+    df = _assign(df, col(MIC).like("NEQ%"),                       "Network Equipment",                 "generic:mic=NEQ%")
+    df = _assign(df, col(MIC).like("TOWER%"),                     "Tower Materials",                   "generic:mic=TOWER%")
+    df = _assign(df, col(MIC).like("CEQ%"),                       "Telecom Equipment",                 "generic:mic=CEQ%")
+    df = _assign(df, col(MIC).like("FBR%") & col(MIC).like("%K"), "Telecom Equipment",                 "generic:mic=FBR%K")
+    df = _assign(df, col(MIC).like("ANT%") & col(MIC).like("%K"), "Communications Equipment",          "generic:mic=ANT%K")
+    df = _assign(df, col(EXTC) == "48C",                          "Freight - Common Carrier Charges",  "generic:extc=48C")
+    df = _assign(df, col(EXTC) == "89Q",                          "Research and Development",          "generic:extc=89Q")
+    df = _assign(df, col(EXTC).like("894%"),                      "Permits",                           "generic:extc=894%")
+    df = _assign(df, (col(EXTC)=="520") & col(MIC).isin(["COE1K","COEOTHER"]),  "Miscellaneous Materials - Telecom", "generic:extc=520+mic")
+    df = _assign(df, (col(MIC)=="COEOTHER") & (col(EXTC)=="450"),               "Contract plant labor",              "generic:mic=COEOTHER+extc=450")
+    df = _assign(df, (col(MIC)=="COEOTHER") & (col(EXTC)=="460"),               "Vendor Engineering",                "generic:mic=COEOTHER+extc=460")
+    df = _assign(df, col(MIC).like("EFI%") & (col(EXTC)=="450"),                "Contract plant labor",              "generic:mic=EFI%+extc=450")
+    df = _assign(df, (col(MIC)=="CPEMIS") & (col(EXTC)=="48C"),                 "Freight",                           "generic:mic=CPEMIS+extc=48C")
+    df = _assign(df, (col(EXTC)=="520") & col(ACCT).like("%M"),                 "Maintenance",                       "generic:extc=520+account=%M")
+    df = _assign(df, col(ACCT).like("1130%"),                                   "Nontaxable",                        "generic:account=1130%")
+    df = _assign(df, col(ACCT).isin(["1220.121","1220.147"]),                   "Inventory",                         "generic:account=1220.x")
+    df = _assign(df, col(ACCT).like("4010%") & ~_desc_contains("freight charges"), "Inventory",                      "generic:account=4010%")
+    df = _assign(df, (col(ACCT)=="6124.570M") & (col(EXTC)=="6A9"),             "Operating Lease",                   "generic:account=6124.570M+extc=6A9")
+    df = _assign(df, (col(ACCT)=="399C") & (col(EXTC)=="61J"),                  "Software - ERTU",                   "generic:account=399C+extc=61J")
+    df = _assign(df, col(ACCT) == "6114.1",                                     "Tools and Testing Equipment",       "generic:account=6114.1")
+    df = _assign(df, (col(ACCT)=="6114.1") & _desc_contains("insulated gloves"),"Safety Equipment",                  "generic:account=6114.1+gloves")
+    df = _assign(df, (col(EXTC)=="450") & (col(ACCT)=="2003.85C"),              "Outside Plant Construction",        "generic:extc=450+account=2003.85C")
+    df = _assign(df, (col(EXTC)=="460") & (col(ACCT)=="2003.85C"),              "Outside Plant Construction",        "generic:extc=460+account=2003.85C")
+
+    for vendor, cluster in {
+        "IRON MOUNTAIN": "Storage Services", "DIVERSIFIED WIRE & CABLE": "Cable - Nonmetalic",
+        "CISCO SYSTEMS CAPITAL": "Capital Lease", "TEKSYSTEMS INC": "Data Processing",
+        "HIGHTOWERS PETROLEUM": "Propane / Fuels", "JK COMMUNICATIONS": "Real Property Construction",
+        "AMERICAN SAFETY UTILITY": "Safety Equipment", "IMAGE SOLUTIONS APPAREL": "Safety Equipment",
+        "SAF T GARD INTERNATIONAL": "Safety Equipment", "STANLEY CONVERGENT": "Security Service",
+        "CANTEEN ONE": "Food/Beverage", "ARAMARK REFRESHMENT": "Food/Beverage",
+    }.items():
+        df = _assign(df, col(VENDOR).like(f"%{vendor}%"), cluster, f"generic:vendor={vendor}")
+
+    df = _assign(df, col(CO) == "7M39",                                          "DTV",                "generic:company=7M39")
+    df = _assign(df, _desc_contains("landscape") & (col(ACCT)=="6121.235") & (col(CO)=="SS00"), "Landscape Services", "generic:landscape+6121.235")
+    df = _assign(df, _desc_contains("base service") & (col(ACCT)=="6123.91"),    "Security service",   "generic:base_service+6123.91")
+    df = _assign(df, _desc_contains("ceeot") & (col(EXTC)=="455"),               "Installation Services - Telecom", "generic:ceeot+455")
+    df = _assign(df, _desc_contains("ceeot") & (col(EXTC)=="465"),               "Vendor Engineering", "generic:ceeot+465")
+    df = _assign(df, _desc_contains("ceeot") & (col(EXTC)=="520"),               "Miscellaneous Materials - Telecom", "generic:ceeot+520")
+    return df
+
+
+def _apply_parker_volpe_rules(df, pv_rules):
+    if pv_rules.empty or "rule_type" not in pv_rules.columns:
+        return df
+    EXTC   = COLS["extc"]
+    VENDOR = COLS["vendor_name"]
+    for _, r in pv_rules[pv_rules["rule_type"] == "extc_only"].iterrows():
+        df = _assign(df, col(EXTC) == r["extc"], r["cluster"], f"pv:extc={r['extc']}")
+    for _, r in pv_rules[pv_rules["rule_type"] == "vendor_only"].iterrows():
+        df = _assign(df, col(VENDOR) == r["vendor_name"], r["cluster"], f"pv:vendor={r['vendor_name']}")
+    for _, r in pv_rules[pv_rules["rule_type"] == "vendor_extc"].iterrows():
+        df = _assign(df, (col(VENDOR)==r["vendor_name"]) & col(EXTC).isin([e.strip() for e in str(r.get("extc","")).split("OR")]), r["cluster"], "pv:vendor+extc")
+    for _, r in pv_rules[pv_rules["rule_type"] == "vendor_desc"].iterrows():
+        df = _assign(df, (col(VENDOR)==r["vendor_name"]) & _desc_contains(*[k.strip() for k in str(r.get("description_keyword","")).split("OR")]), r["cluster"], "pv:vendor+desc")
+    for _, r in pv_rules[pv_rules["rule_type"] == "vendor_desc_extc"].iterrows():
+        df = _assign(df, (col(VENDOR)==r["vendor_name"]) & _desc_contains(*[k.strip() for k in str(r.get("description_keyword","")).split("OR")]) & col(EXTC).isin([e.strip() for e in str(r.get("extc","")).split("OR")]), r["cluster"], "pv:vendor+desc+extc")
+    return df
+
+
+def build_labels(df, rules, spark):
+    """Apply rules, map clusters → account codes, tag label_source = rule / no_rule."""
+    df = build_final_description(df)
+    df = df.withColumn("cluster",      lit(None).cast("string"))
+    df = df.withColumn("rule_matched", lit(None).cast("string"))
+
+    df = _apply_keyword_rules(df,      rules["keyword"])
+    df = _apply_generic_rules(df)
+    df = _apply_parker_volpe_rules(df, rules["parker_volpe"])
+
+    map_path = PATHS.get("cluster_account_map")
+    if map_path:
+        cmap = spark.read.csv(map_path, header=True).withColumnRenamed("cluster", "_c")
+        df   = df.join(F.broadcast(cmap), col("cluster") == col("_c"), "left").drop("_c")
+        df   = df.withColumn("label_account_code",
+                     when(col("cluster").isNotNull() & col("account_code_mapped").isNotNull(), col("account_code_mapped"))
+                     .otherwise(col(COLS["account_code"])))
+    else:
+        df = df.withColumn("account_code_mapped", lit(None).cast("string"))
+        df = df.withColumn("label_account_code", col(COLS["account_code"]))
+
+    df = df.withColumn("label_source",
+             when(col("cluster").isNotNull(), lit("rule")).otherwise(lit("no_rule")))
+
+    rule_n = df.filter(col("label_source") == "rule").count()
+    total  = df.count()
+    print(f"   Rule-matched: {rule_n:,} ({rule_n/total*100:.1f}%)  |  To ML: {total-rule_n:,} ({(total-rule_n)/total*100:.1f}%)")
+    return df
+
+print("✓ Rules engine OK")
+
+
+CAT_COLS = ["EXTC_CODE", "MIC", "COMPANY_CODE", "STATE", "INVOICE_SOURCE"]
+
+_tfidf_vec = None   # fitted TfidfVectorizer
+
+
+def _hash_vendor(name, n_bins=5000):
+    return int(hashlib.md5(str(name).encode()).hexdigest(), 16) % n_bins
+
+
+def _fit_tfidf(texts):
+    global _tfidf_vec
+    _tfidf_vec = TfidfVectorizer(
+        max_features=MODEL_CONFIG["tfidf_max_features"],
+        ngram_range=(1, 2),
+        sublinear_tf=True,
+        min_df=2,
+        analyzer="word",
+    )
+    return _tfidf_vec.fit_transform(texts).toarray().astype(np.float32)
+
+
+def _transform_tfidf(texts):
+    return _tfidf_vec.transform(texts).toarray().astype(np.float32)
+
+
+def build_feature_matrix(pdf, cat_encoders=None, fit=False):
+    raw_texts = pdf["final_description"].fillna("").astype(str).tolist()
+
+    if fit:
+        X_text = _fit_tfidf(raw_texts)
+    else:
+        X_text = _transform_tfidf(raw_texts)
+
+    cat_parts = []
+    if fit:
+        cat_encoders = {}
+    for c in CAT_COLS:
+        vals = pdf[c].fillna("UNKNOWN").astype(str).values
+        if fit:
+            enc = LabelEncoder()
+            enc.fit(np.append(vals, "UNKNOWN"))
+            cat_encoders[c] = enc
+        else:
+            enc   = cat_encoders[c]
+            known = set(enc.classes_)
+            vals  = np.array([v if v in known else "UNKNOWN" for v in vals])
+        cat_parts.append(enc.transform(vals).reshape(-1, 1).astype(np.float32))
+
+    vendor_hashes = (pdf[COLS["vendor_name"]].fillna("")
+                     .apply(_hash_vendor).values.reshape(-1, 1).astype(np.float32))
+    amounts = (np.log1p(np.abs(pdf[COLS["tran_amount"]].fillna(0).astype(float).values))
+               .reshape(-1, 1).astype(np.float32))
+
+    X = np.hstack([X_text] + cat_parts + [vendor_hashes, amounts])
+    return X, cat_encoders
+
+
+print("✓ Feature engineering OK")
+
+def classify_invoices(df, xgb, lgb, label_enc, cat_encoders, spark):
+    id_col = COLS["invoice_id"]
+
+    df_rule    = df.filter(col("label_source") == "rule")
+    df_no_rule = df.filter(col("label_source") == "no_rule")
+    rule_n     = df_rule.count()
+    no_rule_n  = df_no_rule.count()
+    print(f"   Rule-matched: {rule_n:,}  |  Going to ML: {no_rule_n:,}")
+
+    df_rule = (df_rule
+        .withColumn("final_pred",    col("label_account_code"))
+        .withColumn("final_conf",    lit(1.0).cast(FloatType()))
+        .withColumn("decision_path", lit("rule"))
+        .withColumn("xgb_pred",      lit(None).cast(StringType()))
+        .withColumn("xgb_conf",      lit(None).cast(FloatType()))
+        .withColumn("lgb_pred",      lit(None).cast(StringType()))
+        .withColumn("lgb_conf",      lit(None).cast(FloatType()))
+    )
+
+    if no_rule_n == 0:
+        print("   All invoices matched by rules.")
+        return df_rule.withColumn("discovery_cluster_id", lit(None).cast("int"))
+
+    select_cols = ([id_col, "final_description"]
+                   + CAT_COLS + [COLS["vendor_name"], COLS["tran_amount"]])
+    available   = [c for c in select_cols if c in df_no_rule.columns]
+    pdf         = df_no_rule.select(available).toPandas()
+
+    X, _ = build_feature_matrix(pdf, cat_encoders=cat_encoders, fit=False)
+
+    w_xgb    = MODEL_CONFIG["ensemble_weights"]["xgb"]
+    w_lgb    = MODEL_CONFIG["ensemble_weights"]["lgb"]
+    xgb_prob = xgb.predict_proba(X)
+    lgb_prob = lgb.predict(X)
+    ens_prob = w_xgb * xgb_prob + w_lgb * lgb_prob
+
+    xgb_idx  = np.argmax(xgb_prob, axis=1)
+    lgb_idx  = np.argmax(lgb_prob, axis=1)
+    ens_idx  = np.argmax(ens_prob, axis=1)
+
+    xgb_pred = label_enc.inverse_transform(xgb_idx)
+    lgb_pred = label_enc.inverse_transform(lgb_idx)
+    ens_pred = label_enc.inverse_transform(ens_idx)
+    ens_conf = ens_prob[np.arange(len(ens_prob)), ens_idx]
+    xgb_conf = xgb_prob[np.arange(len(xgb_prob)), xgb_idx]
+    lgb_conf = lgb_prob[np.arange(len(lgb_prob)), lgb_idx]
+
+    threshold     = THRESHOLDS["accept_conf"]
+    accepted      = ens_conf >= threshold
+    final_pred    = ens_pred.copy()
+    decision_path = np.where(accepted, "ml", "need_to_review")
+    label_source  = np.where(accepted, "ml", "need_to_review")
+
+    pdf_out = pd.DataFrame({
+        id_col:          pdf[id_col].values,
+        "xgb_pred":      xgb_pred,
+        "xgb_conf":      xgb_conf.astype(float),
+        "lgb_pred":      lgb_pred,
+        "lgb_conf":      lgb_conf.astype(float),
+        "final_pred":    final_pred,
+        "final_conf":    ens_conf.astype(float),
+        "decision_path": decision_path,
+        "label_source":  label_source,
+    })
+
+    schema = StructType([
+        StructField(id_col,          df.schema[id_col].dataType, True),
+        StructField("xgb_pred",      StringType(), True),
+        StructField("xgb_conf",      FloatType(),  True),
+        StructField("lgb_pred",      StringType(), True),
+        StructField("lgb_conf",      FloatType(),  True),
+        StructField("final_pred",    StringType(), True),
+        StructField("final_conf",    FloatType(),  True),
+        StructField("decision_path", StringType(), True),
+        StructField("label_source",  StringType(), True),
+    ])
+    preds_spark = spark.createDataFrame(pdf_out, schema=schema)
+
+    df_no_rule = df_no_rule.drop("label_source").join(preds_spark, on=id_col, how="left")
+    df_final   = df_rule.unionByName(df_no_rule, allowMissingColumns=True)
+
+    summary = df_final.groupBy("label_source").agg(count("*").alias("n")).toPandas()
+    total   = summary["n"].sum()
+    for _, r in summary.sort_values("n", ascending=False).iterrows():
+        print(f"   {r['label_source']:<22} {r['n']:>10,}  ({r['n']/total*100:.1f}%)")
+    print(f"   {'TOTAL':<22} {total:>10,}")
+
+    return df_final
+
+
+print("✓ Inference OK")
+
+def discover_new_clusters(df, spark):
+    """KMeans on TF-IDF embeddings of need-to-review invoices. Auto-selects best k."""
+    id_col = COLS["invoice_id"]
+    df_ntr = df.filter(col("label_source") == "need_to_review")
+    ntr_n  = df_ntr.count()
+    print(f"   Need-to-review: {ntr_n:,}")
+
+    df_final = df.withColumn("discovery_cluster_id", lit(None).cast("int"))
+
+    if ntr_n < DISCOVERY_CONFIG["min_cluster_size"]:
+        print("   Too few records — skipping discovery.")
+        return df_final, pd.DataFrame()
+
+    ctx_cols  = [id_col, "final_description", COLS["vendor_name"], COLS["extc"],
+                 COLS["mic"], COLS["state"], COLS["tran_amount"]]
+    available = [c for c in ctx_cols if c in df_ntr.columns]
+    pdf       = df_ntr.select(available).toPandas()
+
+    raw_texts_ntr = pdf["final_description"].fillna("").astype(str).tolist()
+    print(f"   Vectorizing {len(raw_texts_ntr):,} NTR descriptions...")
+    X_emb = _transform_tfidf(raw_texts_ntr)
+
+    max_k      = max(2, min(DISCOVERY_CONFIG["max_clusters"], len(pdf) // 4, len(pdf) - 1))
+    best_k, best_score = 2, -1.0
+    for k in range(2, max_k + 1):
+        labels = KMeans(n_clusters=k, random_state=42, n_init=5).fit_predict(X_emb)
+        score  = silhouette_score(X_emb, labels, sample_size=min(500, len(pdf)))
+        if score > best_score:
+            best_k, best_score = k, score
+    print(f"   Best k={best_k}  silhouette={best_score:.3f}")
+
+    pdf["discovery_cluster_id"] = KMeans(
+        n_clusters=best_k, random_state=DISCOVERY_CONFIG["random_seed"], n_init=10
+    ).fit_predict(X_emb)
+
+    sizes   = pdf["discovery_cluster_id"].value_counts()
+    valid   = sizes[sizes >= DISCOVERY_CONFIG["min_cluster_size"]].index
+    pdf["discovery_cluster_id"] = pdf["discovery_cluster_id"].apply(lambda c: int(c) if c in valid else -1)
+
+    rows = []
+    for cid in sorted(valid):
+        sub = pdf[pdf["discovery_cluster_id"] == cid]
+        rows.append({
+            "cluster_id":             int(cid),
+            "record_count":           len(sub),
+            "proposed_cluster_name":  "",
+            "proposed_account_code":  "",
+            "top_vendors":            ", ".join(sub[COLS["vendor_name"]].value_counts().head(3).index.tolist()),
+            "top_extc_codes":         ", ".join(sub[COLS["extc"]].value_counts().head(3).index.tolist()),
+            "top_states":             ", ".join(sub[COLS["state"]].value_counts().head(3).index.tolist()),
+            "avg_tran_amount":        round(sub[COLS["tran_amount"]].astype(float).mean(), 2),
+            "sample_descriptions":    " | ".join(sub["final_description"].dropna().head(DISCOVERY_CONFIG["samples_per_cluster"]).tolist()),
+        })
+    cluster_summary = pd.DataFrame(rows)
+
+    cid_spark = spark.createDataFrame(pdf[[id_col, "discovery_cluster_id"]])
+    df_final  = df.drop("discovery_cluster_id").join(cid_spark, on=id_col, how="left")
+    df_final  = df_final.withColumn("discovery_cluster_id",
+                    coalesce(col("discovery_cluster_id"), lit(None).cast("int")))
+
+    print(f"   Valid clusters: {len(valid)}")
+    return df_final, cluster_summary
+
+print("✓ Cluster discovery OK")
+
+def generate_report(df, cluster_summary, report_month):
+    timestamp  = datetime.now().strftime("%Y%m%d_%H%M")
+    local_file = f"/tmp/NeedToReview_{report_month}_{timestamp}.xlsx"
+
+    total    = df.count()
+    counts   = df.groupBy("label_source").agg(count("*").alias("n")).toPandas()
+    def _n(src): return int(counts[counts["label_source"]==src]["n"].sum()) if src in counts["label_source"].values else 0
+
+    rule_n  = _n("rule"); ml_n = _n("ml"); ntr_n = _n("need_to_review")
+    avg_row = df.filter(col("label_source")=="ml").agg(avg("final_conf")).collect()[0][0]
+    avg_c   = round(float(avg_row), 4) if avg_row else 0.0
+
+    summary_df = pd.DataFrame([
+        {"Metric": "Total Invoices Processed",          "Value": total,         "Pct": "100%"},
+        {"Metric": "Classified by Rules",               "Value": rule_n,        "Pct": f"{rule_n/total*100:.1f}%"},
+        {"Metric": "Classified by ML",                  "Value": ml_n,          "Pct": f"{ml_n/total*100:.1f}%"},
+        {"Metric": "Need Human Review",                 "Value": ntr_n,         "Pct": f"{ntr_n/total*100:.1f}%"},
+        {"Metric": "Total Auto-classified",             "Value": rule_n+ml_n,   "Pct": f"{(rule_n+ml_n)/total*100:.1f}%"},
+        {"Metric": "Avg ML Confidence (ML records)",    "Value": avg_c,         "Pct": ""},
+    ])
+
+    desired  = [COLS["invoice_id"], COLS["invoice_num"], "final_description",
+                COLS["vendor_name"], COLS["extc"], COLS["mic"], COLS["state"],
+                COLS["tran_amount"], COLS["account_code"],
+                "xgb_pred", "xgb_conf", "lgb_pred", "lgb_conf",
+                "final_pred", "final_conf", "decision_path", "discovery_cluster_id"]
+    existing = [c for c in desired if c in df.columns]
+    raw_pdf  = (df.filter(col("label_source")=="need_to_review")
+                  .select(existing).orderBy("discovery_cluster_id").toPandas())
+
+    with pd.ExcelWriter(local_file, engine="openpyxl") as writer:
+        summary_df.to_excel(writer, sheet_name="Executive Summary", index=False)
+
+        if not cluster_summary.empty:
+            cluster_summary.to_excel(writer, sheet_name="Discovered Clusters", index=False)
+            try:
+                from openpyxl.styles import PatternFill
+                ws      = writer.sheets["Discovered Clusters"]
+                yellow  = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+                headers = [c.value for c in ws[1]]
+                for fc in ["proposed_cluster_name", "proposed_account_code"]:
+                    if fc in headers:
+                        ci = headers.index(fc) + 1
+                        for row in ws.iter_rows(min_row=2, min_col=ci, max_col=ci):
+                            for cell in row: cell.fill = yellow
+            except Exception:
+                pass
+        else:
+            pd.DataFrame({"message": ["No new clusters this month."]}).to_excel(
+                writer, sheet_name="Discovered Clusters", index=False)
+
+        raw_pdf.to_excel(writer, sheet_name="Raw NTR Records", index=False)
+
+    if PATHS.get("reports_output"):
+        adls = f"{PATHS['reports_output']}NeedToReview_{report_month}_{timestamp}.xlsx"
+        dbutils.fs.cp(f"file:{local_file}", adls, recurse=False)
+        print(f"   Report → ADLS: {adls}")
+        out = adls
+    else:
+        print(f"   Report → driver /tmp: {local_file}")
+        print(f"   Download: Databricks UI → Compute → your cluster → Driver Logs")
+        out = local_file
+
+    print(f"   Auto-classified: {rule_n+ml_n:,} / {total:,} ({(rule_n+ml_n)/total*100:.1f}%)")
+    print(f"   Need review:     {ntr_n:,} / {total:,} ({ntr_n/total*100:.1f}%)")
+    return out
+
+print("✓ Report generator OK")
+
+if MODE == "train":
+    print("\n" + "="*60 + "\n  TRAINING PIPELINE\n" + "="*60)
+
+    train_path = PATHS.get("historical_labeled") or PATHS["daily_invoices"]
+    print(f"\n[1/4] Loading data from:\n      {train_path}")
+    df_hist = spark.read.format("delta").load(train_path)
+    print(f"      {df_hist.count():,} records")
+
+    print("\n[2/4] Applying rules...")
+    rules   = load_rules(PATHS.get("cluster_rules_excel"))
+    df_hist = build_labels(df_hist, rules, spark)
+
+    print("\n[3/4] Training models + logging to MLflow...")
+    xgb, lgb, label_enc, cat_encoders, run_id = train_models(df_hist)
+
+    print(f"\n[4/4] Done. Run ID: {run_id}")
+    print("\n" + "="*60 + "\n  TRAINING COMPLETE\n  → Set MODE='inference' for monthly runs\n" + "="*60)
+
+
+elif MODE == "inference":
+    print("\n" + "="*60 + f"\n  INFERENCE  [{INVOICE_MONTH}]\n" + "="*60)
+
+    print(f"\n[1/5] Loading invoices for {INVOICE_MONTH}...")
+    df = (spark.read.format("delta").load(PATHS["daily_invoices"])
+               .filter(f"ACCOUNTING_DATE like '{INVOICE_MONTH}%'"))
+    print(f"      {df.count():,} records")
+
+    print("\n[2/5] Applying rules...")
+    rules = load_rules(PATHS.get("cluster_rules_excel"))
+    df    = build_labels(df, rules, spark)
+
+    print("\n[3/5] Loading models from MLflow @champion + classifying...")
+    xgb, label_enc = load_artifacts()
+    df = classify_invoices(df, xgb, None, label_enc, {}, spark)
+
+    print("\n[4/5] Cluster discovery...")
+    df, cluster_summary = discover_new_clusters(df, spark)
+
+    if PATHS.get("prediction_store"):
+        print("\n[5/5] Writing to prediction store...")
+        out_cols = [
+            COLS["invoice_id"], COLS["inv_line_number"], COLS["invoice_num"],
+            "final_description", COLS["vendor_name"], COLS["state"],
+            COLS["extc"], COLS["mic"], COLS["account_code"], COLS["tran_amount"],
+            COLS["accounting_date"], "cluster", "rule_matched", "label_account_code",
+            "label_source", "xgb_pred", "xgb_conf", "lgb_pred", "lgb_conf",
+            "final_pred", "final_conf", "decision_path", "discovery_cluster_id",
+        ]
+        (df.select([c for c in out_cols if c in df.columns])
+           .write.format("delta").mode("append")
+           .partitionBy(COLS["accounting_date"])
+           .save(PATHS["prediction_store"]))
+        print("      Done.")
+    else:
+        print("\n[5/5] prediction_store not set — results in 'df' variable.")
+
+    print("\n[Report] Generating Excel report...")
+    report_path = generate_report(df, cluster_summary, INVOICE_MONTH)
+
+    print("\n" + "="*60 + f"\n  INFERENCE COMPLETE\n  Report: {report_path}\n" + "="*60)
+
+else:
+    print(f"Unknown MODE: '{MODE}'. Set MODE = 'train' or MODE = 'inference'.")
