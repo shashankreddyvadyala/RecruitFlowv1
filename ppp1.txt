@@ -1,1 +1,12 @@
+============================================================
+  TRAINING PIPELINE
+============================================================
 
+[1/4] Loading data from:
+      abfss://atims@nprdatimsstore.dfs.core.windows.net/TAXABILITY_DATA/ML_INPUT
+      45,005,141 records
+
+[2/4] Applying rules...
+   [RULES] No Excel path — all invoices go to ML.
+KeyError: 'line_description'
+[Trace ID: 00-8f3c3289b593a6df6587bf90aebd7637-ae853f0673400230-01]
