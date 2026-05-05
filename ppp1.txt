@@ -1,3 +1,1646 @@
+# Databricks notebook source
 
- An internal error occurred while setting up the UDF environment: Failed to set up the Python notebook environment (hash: -633990746) for Spark session 7d1e1385-8047-4842-afc1-69f93f3bba2e. If the issue persists, please contact Databricks support. SQLSTATE: XX000
-Caused by: Failed to upload environment due to cloud storage error. Please verify your cloud storage configuration: Put block to Azure failed with statusCode=403, error=HttpResponseProxy{HTTP/1.1 403 This request is not authorized to perform this operation. [Content-Length: 246, Content-Type: application/xml, Server: Microsoft-HTTPAPI/2.0, x-ms-request-id: 70fe2448-901e-009a-3923-d77bfa000000, x-ms-error-code: AuthorizationFailure, Date: Tue, 28 Apr 2026 15:26:59 GMT] ResponseEntityProxy{[Content-Type: application/xml,Content-Length: 246,Chunked: false]}}
+# MAGIC %md
+# MAGIC # ATIMS — Phase 3: Batch Classification Pipeline
+# MAGIC
+# MAGIC **Owner:** AT&T ATIMS Team  
+# MAGIC **Cluster:** Standard compute (no GPU required)  
+# MAGIC **Schedule:** Monthly, after Phase 2 completes (`prediction_ready` table populated)  
+# MAGIC **Runtime:** Databricks 14.3 LTS or later
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC ## Pipeline Overview
+# MAGIC
+# MAGIC | Step | Name | Technology | Output |
+# MAGIC |------|------|-----------|--------|
+# MAGIC | 3.1 | Rules Expert | Spark SQL JOIN + Vector Search | `p3_rules_matched`, `p3_unmatched` |
+# MAGIC | 3.2 | Classifier | XGBoost + `ai_classify()` + GPT-4o | `p3_classified` |
+# MAGIC | 3.3 | Tax Lookup | Spark SQL LEFT JOIN | `p3_tax_result` |
+# MAGIC | 3.3b | Use Tax | Spark `withColumn` conditionals | appended to `p3_tax_result` |
+# MAGIC | 3.4 | Tax Writer | RAG + `ai_query()` / GPT-4o | `p3_written` |
+# MAGIC | 3.5 | QA | Spark window functions + stats | `p3_qa` |
+# MAGIC | 3.6 | Re-route | Re-classify flagged records (max 2x) | `p3_rerouted` |
+# MAGIC | 3.7 | Write Output | Delta write + FastAPI webhook | `atims_prod.ml_output.non_norad_predictions` |
+# MAGIC
+# MAGIC **Expected throughput:** ~100K records/month  
+# MAGIC **Expected cost:** ~$250/run (cluster + Foundation Model API)  
+# MAGIC **Expected accuracy:** 92–95% (manual review reduced by ~65%)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 0 — Configuration
+# MAGIC > **All tuneable parameters live here. Do not edit below Section 1.**
+
+# COMMAND ----------
+
+import json
+import logging
+import requests
+import traceback
+from datetime import datetime, timezone
+from typing import Optional
+
+from pyspark.sql import DataFrame, Window
+from pyspark.sql import functions as F
+from pyspark.sql.types import (
+    ArrayType, BooleanType, DoubleType, FloatType,
+    IntegerType, StringType, TimestampType
+)
+from mlflow.deployments import get_deploy_client
+from databricks.vector_search.client import VectorSearchClient
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("ATIMS.Phase3")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CATALOG & SCHEMA
+# ─────────────────────────────────────────────────────────────────────────────
+CATALOG_SHARED   = "atims_shared"
+CATALOG_PROD     = "atims_prod"
+STAGING_SCHEMA   = "staging"
+REFERENCE_SCHEMA = "reference"
+ML_OUTPUT_SCHEMA = "ml_output"
+
+# ── Source (Phase 2 output) ───────────────────────────────────────────────────
+INPUT_TABLE          = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.prediction_ready"
+
+# ── Reference tables ─────────────────────────────────────────────────────────
+RULES_TABLE          = f"{CATALOG_SHARED}.{REFERENCE_SCHEMA}.deterministic_rules"
+TAX_MATRIX_TABLE     = f"{CATALOG_SHARED}.{REFERENCE_SCHEMA}.taxability_matrix"
+HISTORICAL_TABLE     = f"{CATALOG_SHARED}.{REFERENCE_SCHEMA}.historical_stats"
+STATE_TAX_TABLE      = f"{CATALOG_SHARED}.{REFERENCE_SCHEMA}.state_service_tax_rules"
+
+# ── Staging tables (intermediate checkpoints) ─────────────────────────────────
+# Set WRITE_STAGING_TABLES = False to skip intermediate writes (faster, less storage).
+# Set True for debugging or re-runability from any step.
+WRITE_STAGING_TABLES = True
+T_RULES_MATCHED  = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_rules_matched"
+T_UNMATCHED      = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_unmatched"
+T_CLASSIFIED     = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_classified"
+T_TAX_RESULT     = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_tax_result"
+T_WRITTEN        = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_written"
+T_QA             = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_qa"
+T_REROUTED       = f"{CATALOG_SHARED}.{STAGING_SCHEMA}.p3_rerouted"
+
+# ── Production output ────────────────────────────────────────────────────────
+OUTPUT_TABLE     = f"{CATALOG_PROD}.{ML_OUTPUT_SCHEMA}.non_norad_predictions"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VECTOR SEARCH
+# ─────────────────────────────────────────────────────────────────────────────
+VS_ENDPOINT              = "atims-vs-endpoint"
+RULES_INDEX              = f"{CATALOG_SHARED}.{REFERENCE_SCHEMA}.rules_kb_index"
+WRITEUPS_INDEX           = f"{CATALOG_SHARED}.{REFERENCE_SCHEMA}.tax_writeups_index"
+VS_RULES_THRESHOLD       = 0.82   # similarity cutoff for rules RAG (0–1, higher = stricter)
+VS_WRITEUPS_NUM_RESULTS  = 3      # prior write-up examples to retrieve per record
+VS_RULES_NUM_RESULTS     = 3
+VS_BATCH_SIZE            = 500    # records per VS SDK call (keep ≤ 1000)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MODEL ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+XGBOOST_ENDPOINT         = "xgboost-non-norad"
+XGBOOST_BATCH_SIZE       = 1000   # records per batch serving call
+LLM_ENDPOINT             = "databricks-gpt-4o"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLASSIFICATION
+# ─────────────────────────────────────────────────────────────────────────────
+AGREEMENT_CONF_THRESHOLD = 0.80   # both XGBoost + LLM must exceed to auto-accept
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPEND CATEGORY TAXONOMY  ← populate all 120 categories here
+# ─────────────────────────────────────────────────────────────────────────────
+CATEGORY_LIST = [
+    "Cable - Metallic",
+    "Cable - Fiber Optic",
+    "Cable - Coaxial",
+    "Software License",
+    "Software Maintenance",
+    "Cloud Services / SaaS",
+    "Hardware - Servers",
+    "Hardware - Networking",
+    "Hardware - End User Devices",
+    "Construction - Civil",
+    "Construction - Electrical",
+    "Construction - Mechanical",
+    "Professional Services - IT",
+    "Professional Services - Legal",
+    "Professional Services - Consulting",
+    "Staffing / Temporary Labor",
+    "Facilities - Rent / Lease",
+    "Facilities - Maintenance",
+    "Utilities - Electric",
+    "Utilities - Gas",
+    "Utilities - Water",
+    "Telecommunications - Voice",
+    "Telecommunications - Data",
+    "Marketing / Advertising",
+    "Training / Education",
+    "Office Supplies",
+    "Printing / Reproduction",
+    "Transportation / Freight",
+    "Fleet Vehicles",
+    "Fuel",
+    "Insurance",
+    "Taxes / Fees / Permits",
+    "Transformer Equipment",
+    "Switching Equipment",
+    "Power Equipment",
+    "Antenna / Tower",
+    "Conduit / Duct",
+    "Fiber Splice / Closure",
+    "Miscellaneous - Other",
+    # ⚠️  ADD REMAINING CATEGORIES TO REACH 120 TOTAL
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QA THRESHOLDS & WEIGHTS
+# ─────────────────────────────────────────────────────────────────────────────
+AMOUNT_ZSCORE_THRESHOLD      = 3.0   # flag if |z-score| > this
+BATCH_OUTLIER_THRESHOLD      = 0.05  # flag if < 5% of vendor's invoices share this category
+MIN_VENDOR_INVOICES_FOR_FLAG = 5     # only run batch outlier check if vendor has ≥ N invoices
+
+# Weighted contribution of each check to anomaly_score (must sum to 1.0)
+QA_WEIGHTS = {
+    "vendor_consistency":       0.20,
+    "amount_zscore":            0.20,
+    "state_history":            0.15,
+    "rule_classifier_conflict": 0.20,
+    "taxability_sanity":        0.15,
+    "batch_outlier":            0.10,
+}
+assert abs(sum(QA_WEIGHTS.values()) - 1.0) < 1e-9, "QA_WEIGHTS must sum to 1.0"
+
+PRIORITY_CRITICAL_THRESHOLD = 0.75
+PRIORITY_HIGH_THRESHOLD     = 0.50
+PRIORITY_MED_THRESHOLD      = 0.25
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RE-ROUTE
+# ─────────────────────────────────────────────────────────────────────────────
+MAX_REROUTE_ITERATIONS = 2
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FASTAPI WEBHOOK
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    FASTAPI_WEBHOOK_URL = dbutils.secrets.get(scope="atims", key="fastapi_webhook_url")
+except Exception:
+    FASTAPI_WEBHOOK_URL = ""
+    logger.warning("Secret 'atims/fastapi_webhook_url' not set — webhook will be skipped.")
+
+WEBHOOK_TIMEOUT_SECONDS = 30
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RUNTIME METADATA
+# ─────────────────────────────────────────────────────────────────────────────
+RUN_MONTH  = datetime.now(timezone.utc).strftime("%Y-%m")
+RUN_TS     = datetime.now(timezone.utc).isoformat()
+CATEGORY_SQL_ARRAY = "ARRAY(" + ", ".join(f"'{c}'" for c in CATEGORY_LIST) + ")"
+
+logger.info("=" * 70)
+logger.info("ATIMS Phase 3 — Batch Classification Pipeline")
+logger.info(f"Run month : {RUN_MONTH}")
+logger.info(f"Run TS    : {RUN_TS}")
+logger.info(f"Categories: {len(CATEGORY_LIST)}")
+logger.info("=" * 70)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 1 — Utilities
+# MAGIC > Shared helpers used across multiple steps.
+
+# COMMAND ----------
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.1  Delta write helper
+# ─────────────────────────────────────────────────────────────────────────────
+def write_staging(df: DataFrame, table: str, label: str) -> int:
+    """Write a DataFrame to a staging Delta table if WRITE_STAGING_TABLES is True.
+    Always returns the row count (triggers an action regardless)."""
+    count = df.count()
+    if WRITE_STAGING_TABLES:
+        (
+            df.write
+            .format("delta")
+            .mode("overwrite")
+            .option("overwriteSchema", "true")
+            .saveAsTable(table)
+        )
+        logger.info(f"[{label}] Written → {table}  ({count:,} rows)")
+    else:
+        logger.info(f"[{label}] Staging write skipped ({count:,} rows in memory)")
+    return count
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.2  Vector Search — batch similarity search
+# ─────────────────────────────────────────────────────────────────────────────
+_vsc_client: Optional[VectorSearchClient] = None
+
+def get_vsc() -> VectorSearchClient:
+    global _vsc_client
+    if _vsc_client is None:
+        _vsc_client = VectorSearchClient()
+    return _vsc_client
+
+
+def vs_batch_search(
+    keys: list[tuple],          # list of (invoice_id, inv_line_number)
+    embeddings: list[list[float]],
+    index_name: str,
+    columns: list[str],
+    num_results: int,
+    threshold: float = 0.0,
+) -> dict[tuple, list[dict]]:
+    """
+    Run batch similarity search against a Databricks Vector Search index.
+    Returns {(invoice_id, inv_line_number): [hit_dict, ...]} for hits above threshold.
+    Each hit_dict maps column name → value using the `columns` list.
+    """
+    index = get_vsc().get_index(endpoint_name=VS_ENDPOINT, index_name=index_name)
+    results: dict[tuple, list[dict]] = {}
+
+    for start in range(0, len(embeddings), VS_BATCH_SIZE):
+        batch_keys = keys[start : start + VS_BATCH_SIZE]
+        batch_embs = embeddings[start : start + VS_BATCH_SIZE]
+
+        for key, emb in zip(batch_keys, batch_embs):
+            try:
+                resp = index.similarity_search(
+                    query_vector=emb,
+                    columns=columns,
+                    num_results=num_results,
+                )
+                hits = resp.get("result", {}).get("data_array", [])
+                parsed = []
+                for hit in hits:
+                    score = float(hit[-1]) if hit else 0.0
+                    if score >= threshold:
+                        parsed.append(dict(zip(columns, hit)))
+                if parsed:
+                    results[key] = parsed
+            except Exception as exc:
+                logger.warning(f"VS query error for key {key}: {exc}")
+
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.3  Attach VS results to a DataFrame via broadcast + UDFs
+# ─────────────────────────────────────────────────────────────────────────────
+def attach_vs_results(
+    df: DataFrame,
+    vs_results: dict,
+    new_cols: dict[str, tuple],   # {output_col_name: (lookup_key, dtype, default)}
+) -> tuple[DataFrame, object]:
+    """
+    Attach values from a VS result lookup dict to a DataFrame using broadcast UDFs.
+    `new_cols` maps output column name → (result_dict_key, Spark type, default_value).
+
+    Returns (df, broadcast_handle). Caller MUST call broadcast_handle.unpersist()
+    AFTER the returned DataFrame has been fully materialised (i.e. after .count(),
+    .cache(), or a Delta write). Unpersisting here would destroy the broadcast
+    before Spark's lazy plan executes the UDFs.
+    """
+    bc = sc.broadcast(vs_results)
+
+    for col_name, (dict_key, dtype, default) in new_cols.items():
+        def _make_udf(dk, dv, broadcast_ref=bc):
+            def _udf(iid, ln):
+                hits = broadcast_ref.value.get((iid, ln))
+                if hits:
+                    return hits[0].get(dk, dv)
+                return dv
+            return F.udf(_udf, dtype)
+
+        df = df.withColumn(col_name, _make_udf(dict_key, default)(
+            F.col("invoice_id"), F.col("inv_line_number")
+        ))
+
+    # Do NOT unpersist here — return the handle so the caller can do it post-materialise
+    return df, bc
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.4  XGBoost batch predict
+# ─────────────────────────────────────────────────────────────────────────────
+_deploy_client = None
+
+def get_deploy_client_cached():
+    global _deploy_client
+    if _deploy_client is None:
+        _deploy_client = get_deploy_client("databricks")
+    return _deploy_client
+
+
+def xgboost_batch_predict(
+    df: DataFrame,
+    endpoint: str = XGBOOST_ENDPOINT,
+    batch_size: int = XGBOOST_BATCH_SIZE,
+) -> tuple[dict, dict]:
+    """
+    Run batch inference against the XGBoost model serving endpoint.
+    Returns (preds_dict, confs_dict) keyed by (invoice_id, inv_line_number).
+    """
+    client = get_deploy_client_cached()
+    rows   = df.select("invoice_id", "inv_line_number", "gte_embedding").collect()
+    preds, confs = {}, {}
+
+    for start in range(0, len(rows), batch_size):
+        batch = rows[start : start + batch_size]
+        embs  = [r["gte_embedding"] for r in batch]
+        try:
+            resp        = client.predict(endpoint=endpoint, inputs={"inputs": embs})
+            predictions = resp.get("predictions", [])
+            for row, pred in zip(batch, predictions):
+                key = (row["invoice_id"], row["inv_line_number"])
+                # Expected response: {"category": "...", "probability": 0.xx}
+                # ↑ Adjust if your endpoint returns raw indices or a different schema
+                if isinstance(pred, dict):
+                    preds[key] = pred.get("category", "Unknown")
+                    confs[key] = float(pred.get("probability", 0.0))
+                elif isinstance(pred, (list, tuple)) and len(pred) >= 2:
+                    preds[key] = str(pred[0])
+                    confs[key] = float(pred[1])
+                else:
+                    preds[key] = str(pred)
+                    confs[key] = 0.5
+        except Exception as exc:
+            logger.error(f"XGBoost batch [{start}:{start+batch_size}] failed: {exc}")
+            for row in batch:
+                key = (row["invoice_id"], row["inv_line_number"])
+                preds[key] = "Unknown"
+                confs[key] = 0.0
+
+    return preds, confs
+
+
+def attach_xgboost_preds(df: DataFrame) -> DataFrame:
+    preds, confs = xgboost_batch_predict(df)
+    preds_bc = sc.broadcast(preds)
+    confs_bc = sc.broadcast(confs)
+
+    udf_pred = F.udf(lambda iid, ln: preds_bc.value.get((iid, ln), "Unknown"), StringType())
+    udf_conf = F.udf(lambda iid, ln: float(confs_bc.value.get((iid, ln), 0.0)), FloatType())
+
+    result = (
+        df
+        .withColumn("xgboost_pred", udf_pred(F.col("invoice_id"), F.col("inv_line_number")))
+        .withColumn("xgboost_conf", udf_conf(F.col("invoice_id"), F.col("inv_line_number")))
+    )
+    preds_bc.unpersist()
+    confs_bc.unpersist()
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.5  Tax lookup + Use Tax (shared between Step 3 and Re-route)
+# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.5  Tax matrix — pre-loaded once, reused by apply_tax_lookup (Steps 3.3 + 3.6)
+# ─────────────────────────────────────────────────────────────────────────────
+# Loaded here (not inside the function) so it is read from disk exactly once.
+# dropDuplicates on (cluster, state) is critical: any duplicate rows would cause
+# a LEFT JOIN fan-out that increases row count and breaks the Step 3.7 quality gate.
+_TAX_MATRIX_BC = F.broadcast(
+    spark.table(TAX_MATRIX_TABLE)
+    .select(
+        F.col("cluster").alias("_tm_cluster"),
+        F.col("state").alias("_tm_state"),
+        "taxability",
+    )
+    .dropDuplicates(["_tm_cluster", "_tm_state"])
+)
+
+
+def apply_tax_lookup(df: DataFrame) -> DataFrame:
+    """LEFT JOIN taxability matrix, then derive Reverse_UseTax.
+    Uses _TAX_MATRIX_BC which is loaded, deduplicated, and broadcast once at startup."""
+    df = (
+        df
+        .join(
+            _TAX_MATRIX_BC,
+            (df["final_category"] == _TAX_MATRIX_BC["_tm_cluster"]) &
+            (df["state"]          == _TAX_MATRIX_BC["_tm_state"]),
+            how="left",
+        )
+        .drop("_tm_cluster", "_tm_state")
+        .withColumn("tax_source",
+            F.when(F.col("taxability").isNotNull(), F.lit("matrix"))
+             .otherwise(F.lit("no_match"))
+        )
+    )
+    # ── Task 3.3b: Use Tax reversal logic ─────────────────────────────────────
+    # ⚠️  OPEN QUESTION: NULL use_tax_amount — confirm with client whether
+    #     NULL means "no use tax assessed" or "data gap". Current treatment: NULL → deferred (null output).
+    df = df.withColumn("Reverse_UseTax",
+        F.when(
+            (F.col("use_tax_amount") > 0) & (F.col("taxability") == "Exempt"),
+            F.lit("Yes"),    # use tax was paid but item is exempt → reversal required
+        ).when(
+            (F.col("use_tax_amount") > 0) & (F.col("taxability") == "Taxable"),
+            F.lit("No"),     # use tax paid on taxable item → correct, no reversal
+        ).when(
+            F.col("use_tax_amount") == 0,
+            F.lit("No"),     # no use tax → no reversal
+        ).when(
+            F.col("taxability").isNull(),
+            F.lit(None).cast(StringType()),   # taxability unknown → cannot determine
+        ).otherwise(
+            F.lit(None).cast(StringType()),   # use_tax_amount IS NULL → deferred
+        )
+    )
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.6  Write-up generation (shared between Step 4 and Re-route)
+# ─────────────────────────────────────────────────────────────────────────────
+def parse_short_justification(raw: str) -> str:
+    if not raw:
+        return ""
+    for line in raw.splitlines():
+        if line.startswith("SHORT_JUSTIFICATION:"):
+            return line.replace("SHORT_JUSTIFICATION:", "").strip()
+    return raw.splitlines()[0].strip()[:300]
+
+
+def parse_full_writeup(raw: str) -> str:
+    if not raw:
+        return ""
+    if "FULL_WRITEUP:" in raw:
+        return raw.split("FULL_WRITEUP:", 1)[1].strip()
+    lines = raw.splitlines()
+    return "\n".join(lines[1:]).strip() if len(lines) > 1 else raw
+
+
+udf_parse_short = F.udf(parse_short_justification, StringType())
+udf_parse_full  = F.udf(parse_full_writeup,        StringType())
+
+
+def apply_tax_writer(df: DataFrame, temp_view_suffix: str = "") -> DataFrame:
+    """Generate audit write-ups via ai_query(). RAG examples fetched when called from Step 4."""
+    view = f"writeup_input{temp_view_suffix}"
+    df.createOrReplaceTempView(view)
+
+    df = spark.sql(f"""
+        SELECT
+            *,
+            ai_query(
+                '{LLM_ENDPOINT}',
+                CONCAT(
+                    'You are an AT&T AP Tax Analyst producing AUDIT-READY taxability justifications.',
+                    ' Be specific, cite the category and state, reference applicable tax rule.',
+                    ' Do NOT use generic language.',
+                    CHR(10), CHR(10),
+                    '=== INVOICE ===', CHR(10),
+                    'Description : ', final_description, CHR(10),
+                    'Vendor       : ', vendor_name, CHR(10),
+                    'Category     : ', COALESCE(final_category, 'UNKNOWN'), CHR(10),
+                    'State        : ', COALESCE(state, 'UNKNOWN'), CHR(10),
+                    'Amount       : $', CAST(ROUND(amount, 2) AS STRING), CHR(10),
+                    'Taxability   : ', COALESCE(taxability, 'UNKNOWN'), CHR(10),
+                    'Reverse UTax : ', COALESCE(Reverse_UseTax, 'N/A'), CHR(10),
+                    IF(Reverse_UseTax = 'Yes',
+                       CONCAT('Use Tax Amt  : $', CAST(ROUND(use_tax_amount, 2) AS STRING), CHR(10)),
+                       ''
+                    ),
+                    COALESCE(
+                        IF(prior_writeup_examples IS NOT NULL AND LENGTH(prior_writeup_examples) > 0,
+                           CONCAT(CHR(10), '=== SIMILAR PRIOR WRITE-UPS ===', CHR(10), prior_writeup_examples, CHR(10)),
+                           ''
+                        ),
+                        ''
+                    ),
+                    CHR(10),
+                    '=== INSTRUCTIONS ===', CHR(10),
+                    'Respond in EXACTLY this format (no preamble):',   CHR(10),
+                    'SHORT_JUSTIFICATION: <one sentence, ≤35 words>',   CHR(10),
+                    'FULL_WRITEUP: <2-3 paragraphs, ≤200 words.',
+                    IF(Reverse_UseTax = 'Yes',
+                       CONCAT(' State use tax reversal of $', CAST(ROUND(use_tax_amount,2) AS STRING), ' is required.'),
+                       ''
+                    ),
+                    '>'
+                )
+            ) AS _writeup_raw
+        FROM {view}
+    """)
+
+    df = (
+        df
+        .withColumn("short_justification", udf_parse_short(F.col("_writeup_raw")))
+        .withColumn("full_writeup",        udf_parse_full(F.col("_writeup_raw")))
+        .withColumn("reviewer_note",
+            F.when(
+                F.col("taxability").isNull(),
+                F.lit("⚠️ No taxability matrix match — manual determination required."),
+            ).when(
+                F.col("Reverse_UseTax") == "Yes",
+                F.concat(
+                    F.lit("⚠️ Use tax reversal required: $"),
+                    F.round(F.col("use_tax_amount"), 2).cast(StringType()),
+                ),
+            ).otherwise(F.lit(None).cast(StringType()))
+        )
+        .withColumn("audit_ready",
+            (
+                F.col("taxability").isNotNull()
+                & F.col("short_justification").isNotNull()
+                & (F.length(F.col("short_justification")) > 5)
+            ).cast(BooleanType())
+        )
+        .drop("_writeup_raw")
+    )
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.7  QA scoring (shared between Step 5 and Re-route lite)
+# ─────────────────────────────────────────────────────────────────────────────
+def assign_priority_and_flags(df: DataFrame) -> DataFrame:
+    """
+    Given flag columns (flag_*), compute anomaly_score, review_priority,
+    override_suggested, anomalies array, and recommendation.
+    Requires flag_vendor_consistency, flag_amount_zscore, flag_state_history,
+    flag_rule_conflict, flag_taxability_sanity, flag_batch_outlier to exist.
+    """
+    w = QA_WEIGHTS
+    df = df.withColumn("anomaly_score",
+        (F.col("flag_vendor_consistency").cast(FloatType())    * w["vendor_consistency"])
+        + (F.col("flag_amount_zscore").cast(FloatType())       * w["amount_zscore"])
+        + (F.col("flag_state_history").cast(FloatType())       * w["state_history"])
+        + (F.col("flag_rule_conflict").cast(FloatType())       * w["rule_classifier_conflict"])
+        + (F.col("flag_taxability_sanity").cast(FloatType())   * w["taxability_sanity"])
+        + (F.col("flag_batch_outlier").cast(FloatType())       * w["batch_outlier"])
+    )
+    # Null taxability always escalates to at least HIGH
+    df = df.withColumn("anomaly_score",
+        F.when(
+            F.col("taxability").isNull(),
+            F.greatest(F.col("anomaly_score"), F.lit(PRIORITY_HIGH_THRESHOLD))
+        ).otherwise(F.col("anomaly_score"))
+    )
+    df = (
+        df
+        .withColumn("review_priority",
+            F.when(F.col("anomaly_score") >= PRIORITY_CRITICAL_THRESHOLD, F.lit("CRITICAL"))
+             .when(F.col("anomaly_score") >= PRIORITY_HIGH_THRESHOLD,     F.lit("HIGH"))
+             .when(F.col("anomaly_score") >= PRIORITY_MED_THRESHOLD,      F.lit("MED"))
+             .otherwise(F.lit("LOW"))
+        )
+        .withColumn("override_suggested",
+            F.col("review_priority").isin("HIGH", "CRITICAL")
+        )
+        .withColumn("anomalies",
+            F.array_compact(F.array(
+                F.when(F.col("flag_vendor_consistency"),   F.lit("vendor_category_mismatch")),
+                F.when(F.col("flag_amount_zscore"),        F.lit("amount_outlier")),
+                F.when(F.col("flag_state_history"),        F.lit("new_state_category_combo")),
+                F.when(F.col("flag_rule_conflict"),        F.lit("rule_classifier_conflict")),
+                F.when(F.col("flag_taxability_sanity"),    F.lit("taxability_sanity_fail")),
+                F.when(F.col("flag_batch_outlier"),        F.lit("batch_vendor_outlier")),
+                F.when(F.col("taxability").isNull(),       F.lit("no_taxability_match")),
+            ))
+        )
+        .withColumn("recommendation",
+            F.when(F.col("flag_rule_conflict"),
+                   F.lit("Review: rule and ML model disagree on category."))
+             .when(F.col("flag_taxability_sanity"),
+                   F.lit("Review: taxability assignment contradicts state tax rule."))
+             .when(F.col("taxability").isNull(),
+                   F.lit("Escalate: no matrix match. Manual determination required."))
+             .when(F.col("flag_amount_zscore"),
+                   F.lit("Review: invoice amount is a statistical outlier for this category."))
+             .when(F.col("flag_vendor_consistency"),
+                   F.lit("Review: category differs from this vendor's historical pattern."))
+             .when(F.col("flag_batch_outlier"),
+                   F.lit("Review: rare category assignment for this vendor this month."))
+             .when(F.col("flag_state_history"),
+                   F.lit("Review: category-state combination not seen in prior 12 months."))
+             .otherwise(F.lit(None).cast(StringType()))
+        )
+    )
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1.8  Pipeline run metrics accumulator
+# ─────────────────────────────────────────────────────────────────────────────
+_metrics: dict = {"run_month": RUN_MONTH, "run_ts": RUN_TS}
+
+def record_metric(key: str, value) -> None:
+    _metrics[key] = value
+    logger.info(f"METRIC  {key} = {value}")
+
+
+logger.info("Section 1 — Utilities loaded.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 2 — Input Validation
+# MAGIC > Validates the Phase 2 output table before any computation.
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 0  Input Validation")
+logger.info("=" * 60)
+
+REQUIRED_INPUT_COLS = [
+    # Exact columns produced by Phase 2 Step 2.7
+    "invoice_id", "inv_line_number", "final_description",
+    "vendor_name", "extc", "mic_cln", "account_code",
+    "state", "amount", "entity_code", "gte_embedding",
+]
+
+pred_df: DataFrame = spark.table(INPUT_TABLE)
+missing_cols = [c for c in REQUIRED_INPUT_COLS if c not in pred_df.columns]
+if missing_cols:
+    raise ValueError(
+        f"Input table '{INPUT_TABLE}' is missing required columns: {missing_cols}\n"
+        "Ensure Phase 2 has completed successfully before running Phase 3."
+    )
+
+# ── Defensive column additions ────────────────────────────────────────────────
+# use_tax_amount: sourced from AP system upstream — may or may not be in prediction_ready.
+# Added here so it flows through the entire pipeline correctly from Step 3.1 onwards.
+if "use_tax_amount" not in pred_df.columns:
+    logger.warning("'use_tax_amount' not in prediction_ready — defaulting to 0.0. Confirm with source system.")
+    pred_df = pred_df.withColumn("use_tax_amount", F.lit(0.0).cast(FloatType()))
+
+# vendor_id: not in Phase 2 spec but useful for QA vendor checks. Add as null if absent.
+if "vendor_id" not in pred_df.columns:
+    logger.warning("'vendor_id' not in prediction_ready — added as null. QA Check 1 and 6 will be limited.")
+    pred_df = pred_df.withColumn("vendor_id", F.lit(None).cast(StringType()))
+
+# Cache — this DF is read by 3.1 (full scan + join)
+pred_df.cache()
+TOTAL_RECORDS = pred_df.count()
+
+if TOTAL_RECORDS == 0:
+    raise ValueError(f"Input table '{INPUT_TABLE}' is empty. Phase 2 may not have completed.")
+
+record_metric("total_input_records", TOTAL_RECORDS)
+logger.info(f"Input validated: {TOTAL_RECORDS:,} records ready for classification.")
+
+if len(CATEGORY_LIST) < 10:
+    logger.warning(
+        f"CATEGORY_LIST has only {len(CATEGORY_LIST)} entries. "
+        "Populate all 120 categories before running in production."
+    )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 3 — Step 3.1: Rules Expert
+# MAGIC > **Pass 1:** Deterministic SQL JOIN on `extc + mic_cln + account_code`  
+# MAGIC > **Pass 2:** Vector Search RAG fallback for remaining records
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.1  Rules Expert")
+logger.info("=" * 60)
+
+# ── Load & broadcast deterministic rules ──────────────────────────────────────
+rules_src: DataFrame = spark.table(RULES_TABLE)
+if "mic" in rules_src.columns and "mic_cln" not in rules_src.columns:
+    rules_src = rules_src.withColumnRenamed("mic", "mic_cln")
+
+rules_bc = F.broadcast(
+    rules_src.select("extc", "mic_cln", "account_code", "category").distinct()
+)
+
+# ── Pass 1: Deterministic JOIN ────────────────────────────────────────────────
+det_matched_df: DataFrame = (
+    pred_df
+    .join(rules_bc, on=["extc", "mic_cln", "account_code"], how="inner")
+    .withColumn("rule_match",  F.lit(True).cast(BooleanType()))
+    .withColumn("rule_id",     F.concat_ws("|", F.col("extc"), F.col("mic_cln"), F.col("account_code")))
+    .withColumn("match_type",  F.lit("deterministic"))
+    .withColumn("confidence",  F.lit(1.0).cast(FloatType()))
+)
+det_matched_df.cache()
+det_count = det_matched_df.count()
+
+# Records with no deterministic match
+no_det_df: DataFrame = pred_df.join(
+    rules_bc.select("extc", "mic_cln", "account_code").distinct(),
+    on=["extc", "mic_cln", "account_code"],
+    how="left_anti",
+)
+no_det_count = no_det_df.count()
+
+record_metric("step3_1_det_matched",  det_count)
+record_metric("step3_1_no_det_match", no_det_count)
+logger.info(f"Deterministic: {det_count:,} ({det_count/TOTAL_RECORDS*100:.1f}%)  |  Unmatched: {no_det_count:,}")
+
+# ── Pass 2: Vector Search RAG fallback ───────────────────────────────────────
+logger.info(f"Running Vector Search RAG on {no_det_count:,} records...")
+no_det_rows  = no_det_df.select("invoice_id", "inv_line_number", "gte_embedding").collect()
+vs_keys      = [(r["invoice_id"], r["inv_line_number"]) for r in no_det_rows]
+vs_embeddings = [r["gte_embedding"] for r in no_det_rows]
+
+vs_rules_hits = vs_batch_search(
+    keys        = vs_keys,
+    embeddings  = vs_embeddings,
+    index_name  = RULES_INDEX,
+    columns     = ["rule_id", "category", "score"],
+    num_results = VS_RULES_NUM_RESULTS,
+    threshold   = VS_RULES_THRESHOLD,
+)
+
+# Attach VS results to no_det_df
+no_det_tagged, vs_rules_bc = attach_vs_results(
+    df        = no_det_df,
+    vs_results= vs_rules_hits,
+    new_cols  = {
+        "_vs_category":   ("category", StringType(), None),
+        "_vs_rule_id":    ("rule_id",  StringType(), None),
+        "_vs_confidence": ("score",    FloatType(),  None),
+    },
+)
+
+# Split into RAG-matched vs truly unmatched
+rag_matched_df: DataFrame = (
+    no_det_tagged
+    .filter(F.col("_vs_category").isNotNull())
+    .withColumn("rule_match",  F.lit(True).cast(BooleanType()))
+    .withColumn("rule_id",     F.col("_vs_rule_id"))
+    .withColumn("category",    F.col("_vs_category"))
+    .withColumn("confidence",  F.col("_vs_confidence"))
+    .withColumn("match_type",  F.lit("rag"))
+    .drop("_vs_category", "_vs_rule_id", "_vs_confidence")
+)
+
+unmatched_df: DataFrame = (
+    no_det_tagged
+    .filter(F.col("_vs_category").isNull())
+    .withColumn("rule_match",  F.lit(False).cast(BooleanType()))
+    .withColumn("rule_id",     F.lit(None).cast(StringType()))
+    .withColumn("category",    F.lit(None).cast(StringType()))
+    .withColumn("confidence",  F.lit(None).cast(FloatType()))
+    .withColumn("match_type",  F.lit("none"))
+    .drop("_vs_category", "_vs_rule_id", "_vs_confidence")
+)
+
+rag_count       = rag_matched_df.count()
+unmatched_count = unmatched_df.count()
+vs_rules_bc.unpersist()   # safe to unpersist now — counts have materialised both splits
+
+record_metric("step3_1_rag_matched",  rag_count)
+record_metric("step3_1_unmatched",    unmatched_count)
+record_metric("step3_1_match_rate_pct", round((det_count + rag_count) / TOTAL_RECORDS * 100, 2))
+logger.info(f"RAG matched: {rag_count:,}  |  Truly unmatched (→ Step 3.2): {unmatched_count:,}")
+
+# ── Stage outputs ─────────────────────────────────────────────────────────────
+# RULES_COLS: every column carried forward from this step through the pipeline.
+# vendor_id and use_tax_amount are included — both were defensively added to pred_df
+# in Section 2 before cache(), so they exist on all derived DataFrames here.
+RULES_COLS = [
+    "invoice_id", "inv_line_number", "final_description", "vendor_name", "vendor_id",
+    "extc", "mic_cln", "account_code", "state", "amount", "use_tax_amount", "entity_code",
+    "gte_embedding", "rule_match", "rule_id", "category", "confidence", "match_type",
+]
+
+rules_matched_all: DataFrame = (
+    det_matched_df.select(RULES_COLS)
+    .union(rag_matched_df.select(RULES_COLS))
+)
+rules_matched_all.cache()
+
+write_staging(rules_matched_all, T_RULES_MATCHED, "3.1-matched")
+write_staging(unmatched_df.select(RULES_COLS), T_UNMATCHED, "3.1-unmatched")
+
+pred_df.unpersist()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 4 — Step 3.2: Classifier
+# MAGIC > Runs only on unmatched records.  
+# MAGIC > **Sub-model A:** XGBoost batch predict (fast, deterministic)  
+# MAGIC > **Sub-model B:** `ai_classify()` LLM zero-shot  
+# MAGIC > **Resolution:** GPT-4o via `ai_query()` when models disagree (~10–15%)
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.2  Classifier")
+logger.info("=" * 60)
+
+if unmatched_count == 0:
+    logger.info("No unmatched records — Step 3.2 skipped.")
+    classified_df = spark.createDataFrame([], schema=unmatched_df.schema
+        .add("xgboost_pred", StringType()).add("xgboost_conf", FloatType())
+        .add("llm_pred", StringType()).add("llm_conf", FloatType())
+        .add("agreement", BooleanType()).add("final_category", StringType())
+        .add("ensemble_confidence", FloatType()).add("resolution_method", StringType()))
+else:
+    # ── Sub-model A: XGBoost ─────────────────────────────────────────────────
+    logger.info(f"XGBoost batch predict on {unmatched_count:,} records...")
+    unmatched_xgb = attach_xgboost_preds(unmatched_df.select(RULES_COLS))
+
+    # ── Sub-model B: ai_classify() ────────────────────────────────────────────
+    logger.info("ai_classify() zero-shot classification...")
+    unmatched_xgb.createOrReplaceTempView("step32_unmatched")
+
+    unmatched_llm: DataFrame = spark.sql(f"""
+        SELECT
+            *,
+            ai_classify(final_description, {CATEGORY_SQL_ARRAY}) AS _llm_raw
+        FROM step32_unmatched
+    """)
+
+    unmatched_llm = (
+        unmatched_llm
+        .withColumn("llm_pred",
+            F.when(F.col("_llm_raw").isNotNull(), F.col("_llm_raw.label"))
+             .otherwise(F.lit("Unknown")).cast(StringType())
+        )
+        .withColumn("llm_conf",
+            F.when(F.col("_llm_raw").isNotNull(), F.col("_llm_raw.score").cast(FloatType()))
+             .otherwise(F.lit(0.0))
+        )
+        .drop("_llm_raw")
+    )
+
+    # ── Agreement logic ───────────────────────────────────────────────────────
+    with_agreement: DataFrame = (
+        unmatched_llm
+        .withColumn("agreement",  F.col("xgboost_pred") == F.col("llm_pred"))
+        .withColumn("_min_conf",  F.least(F.col("xgboost_conf"), F.col("llm_conf")))
+        .withColumn("_bucket",
+            F.when(
+                F.col("agreement") & (F.col("_min_conf") >= AGREEMENT_CONF_THRESHOLD),
+                F.lit("ACCEPT"),
+            ).when(
+                F.col("agreement") & (F.col("_min_conf") < AGREEMENT_CONF_THRESHOLD),
+                F.lit("MEDIUM"),
+            ).otherwise(F.lit("RESOLVE"))
+        )
+    )
+
+    accept_df  = with_agreement.filter(F.col("_bucket").isin("ACCEPT", "MEDIUM"))
+    resolve_df = with_agreement.filter(F.col("_bucket") == "RESOLVE")
+
+    accept_count  = accept_df.count()
+    resolve_count = resolve_df.count()
+    record_metric("step3_2_accept",  accept_count)
+    record_metric("step3_2_resolve", resolve_count)
+    logger.info(f"ACCEPT/MEDIUM: {accept_count:,}  |  RESOLVE (GPT-4o): {resolve_count:,}")
+
+    accept_tagged: DataFrame = (
+        accept_df
+        .withColumn("final_category",      F.col("xgboost_pred"))
+        .withColumn("ensemble_confidence", (F.col("xgboost_conf") + F.col("llm_conf")) / 2)
+        .withColumn("resolution_method",   F.col("_bucket"))
+        .drop("_bucket", "_min_conf")
+    )
+
+    # ── GPT-4o resolution on disagreements ───────────────────────────────────
+    if resolve_count > 0:
+        logger.info(f"GPT-4o resolution on {resolve_count:,} disagreements...")
+        resolve_df.drop("_bucket", "_min_conf").createOrReplaceTempView("step32_resolve")
+        cat_list_str = ", ".join(CATEGORY_LIST)
+
+        resolved_df: DataFrame = spark.sql(f"""
+            SELECT
+                *,
+                ai_query(
+                    '{LLM_ENDPOINT}',
+                    CONCAT(
+                        'You are an AP invoice classification expert. Two models disagree.',
+                        CHR(10),
+                        'XGBoost  : ', xgboost_pred, ' (conf=', ROUND(xgboost_conf,3), ')',
+                        CHR(10),
+                        'LLM      : ', llm_pred,     ' (conf=', ROUND(llm_conf,3), ')',
+                        CHR(10),
+                        'Description : ', final_description,
+                        CHR(10),
+                        'Vendor      : ', vendor_name,
+                        CHR(10),
+                        'extc=', extc, '  mic_cln=', mic_cln, '  account=', account_code,
+                        CHR(10), CHR(10),
+                        'Pick the SINGLE best category from this exact list:',
+                        CHR(10),
+                        '{cat_list_str}',
+                        CHR(10), CHR(10),
+                        'Respond with ONLY the category name. No explanation.'
+                    )
+                ) AS _resolved_raw
+            FROM step32_resolve
+        """)
+
+        resolved_tagged: DataFrame = (
+            resolved_df
+            .withColumn("final_category",      F.trim(F.col("_resolved_raw")).cast(StringType()))
+            .withColumn("ensemble_confidence",  F.greatest(F.col("xgboost_conf"), F.col("llm_conf")))
+            .withColumn("resolution_method",    F.lit("llm_resolution"))
+            .drop("_resolved_raw", "_bucket", "_min_conf")
+        )
+    else:
+        resolved_tagged = (
+            resolve_df.drop("_bucket", "_min_conf")
+            .withColumn("final_category",      F.lit(None).cast(StringType()))
+            .withColumn("ensemble_confidence",  F.lit(0.0).cast(FloatType()))
+            .withColumn("resolution_method",    F.lit("llm_resolution"))
+        )
+
+    # ── Union & stage ─────────────────────────────────────────────────────────
+    CLASSIFIER_COLS = RULES_COLS + [
+        "xgboost_pred", "xgboost_conf", "llm_pred", "llm_conf",
+        "agreement", "final_category", "ensemble_confidence", "resolution_method",
+    ]
+    # Ensure both DFs have all columns
+    for col_name in CLASSIFIER_COLS:
+        if col_name not in accept_tagged.columns:
+            accept_tagged = accept_tagged.withColumn(col_name, F.lit(None).cast(StringType()))
+        if col_name not in resolved_tagged.columns:
+            resolved_tagged = resolved_tagged.withColumn(col_name, F.lit(None).cast(StringType()))
+
+    classified_df: DataFrame = (
+        accept_tagged.select(CLASSIFIER_COLS)
+        .union(resolved_tagged.select(CLASSIFIER_COLS))
+    )
+    classified_df.cache()
+    write_staging(classified_df, T_CLASSIFIED, "3.2-classified")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 5 — Step 3.3 + 3.3b: Tax Lookup & Use Tax
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.3 + 3.3b  Tax Lookup & Use Tax")
+logger.info("=" * 60)
+
+# ── Unify rules_matched + classified under a common schema ────────────────────
+# rules_matched uses "category", classifier uses "final_category"
+rules_for_union: DataFrame = rules_matched_all.withColumnRenamed("category", "final_category")
+for col_name, dtype in [
+    ("xgboost_pred", StringType()), ("xgboost_conf", FloatType()),
+    ("llm_pred", StringType()),     ("llm_conf", FloatType()),
+    ("agreement", BooleanType()),   ("ensemble_confidence", FloatType()),
+    ("resolution_method", StringType()),
+]:
+    if col_name not in rules_for_union.columns:
+        rules_for_union = rules_for_union.withColumn(col_name, F.lit(None).cast(dtype))
+
+# Add confidence alias for rules
+if "confidence" not in classified_df.columns:
+    classified_df = classified_df.withColumn("confidence", F.lit(None).cast(FloatType()))
+
+UNION_COLS = [
+    "invoice_id", "inv_line_number", "final_description", "vendor_name", "vendor_id",
+    "extc", "mic_cln", "account_code", "state", "amount", "use_tax_amount", "entity_code",
+    "gte_embedding", "rule_match", "rule_id", "match_type", "confidence",
+    "xgboost_pred", "xgboost_conf", "llm_pred", "llm_conf",
+    "agreement", "final_category", "ensemble_confidence", "resolution_method",
+]
+
+all_df: DataFrame = (
+    rules_for_union.select(UNION_COLS)
+    .union(classified_df.select(UNION_COLS))
+)
+
+# ── Apply tax lookup + use tax ────────────────────────────────────────────────
+tax_result_df: DataFrame = apply_tax_lookup(all_df)
+tax_result_df.cache()
+
+matrix_hits   = tax_result_df.filter(F.col("tax_source") == "matrix").count()
+no_match_hits = tax_result_df.filter(F.col("tax_source") == "no_match").count()
+reversal_yes  = tax_result_df.filter(F.col("Reverse_UseTax") == "Yes").count()
+
+record_metric("step3_3_matrix_hits",   matrix_hits)
+record_metric("step3_3_no_match",      no_match_hits)
+record_metric("step3_3b_reversal_yes", reversal_yes)
+
+logger.info(f"Taxability matrix hits: {matrix_hits:,}  |  No match: {no_match_hits:,}")
+logger.info(f"Use tax reversals (Reverse_UseTax=Yes): {reversal_yes:,}")
+if no_match_hits > 0:
+    logger.warning(f"{no_match_hits:,} records have NULL taxability — will escalate to human review.")
+
+write_staging(tax_result_df, T_TAX_RESULT, "3.3-tax_result")
+rules_matched_all.unpersist()
+classified_df.unpersist()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 6 — Step 3.4: Tax Writer
+# MAGIC > Retrieves similar prior write-ups via Vector Search (RAG), then generates  
+# MAGIC > audit-ready justifications for every record using GPT-4o.
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.4  Tax Writer")
+logger.info("=" * 60)
+
+# ── RAG: retrieve prior write-up examples ─────────────────────────────────────
+logger.info(f"Fetching prior write-up examples for {TOTAL_RECORDS:,} records...")
+wr_rows      = tax_result_df.select("invoice_id", "inv_line_number", "gte_embedding").collect()
+wr_keys      = [(r["invoice_id"], r["inv_line_number"]) for r in wr_rows]
+wr_embeddings = [r["gte_embedding"] for r in wr_rows]
+
+vs_writeup_hits = vs_batch_search(
+    keys        = wr_keys,
+    embeddings  = wr_embeddings,
+    index_name  = WRITEUPS_INDEX,
+    columns     = ["short_justification", "full_writeup", "score"],
+    num_results = VS_WRITEUPS_NUM_RESULTS,
+    threshold   = 0.0,    # accept all results; GPT-4o uses them as soft examples
+)
+
+# Build prior_examples string per record
+def build_examples(hits: list[dict]) -> str:
+    parts = []
+    for h in hits:
+        short = h.get("short_justification", "")
+        full  = h.get("full_writeup", "")
+        parts.append(f"Short: {short}\nFull: {full}")
+    return "\n\n---\n\n".join(parts)
+
+examples_lookup = {k: build_examples(v) for k, v in vs_writeup_hits.items()}
+examples_bc     = sc.broadcast(examples_lookup)
+
+udf_examples = F.udf(
+    lambda iid, ln: examples_bc.value.get((iid, ln), ""),
+    StringType()
+)
+
+tax_result_df = tax_result_df.withColumn(
+    "prior_writeup_examples",
+    udf_examples(F.col("invoice_id"), F.col("inv_line_number")),
+)
+
+# ── Generate write-ups ────────────────────────────────────────────────────────
+logger.info("Generating audit write-ups via ai_query / GPT-4o...")
+written_df: DataFrame = apply_tax_writer(tax_result_df, temp_view_suffix="_step34")
+written_df = written_df.drop("prior_writeup_examples")
+written_df.cache()
+
+audit_ready_count  = written_df.filter(F.col("audit_ready") == True).count()
+record_metric("step3_4_audit_ready", audit_ready_count)
+logger.info(f"Write-ups generated: {TOTAL_RECORDS:,}  |  Audit-ready: {audit_ready_count:,}")
+
+write_staging(written_df, T_WRITTEN, "3.4-written")
+tax_result_df.unpersist()
+examples_bc.unpersist()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 7 — Step 3.5: QA (Anomaly Detection)
+# MAGIC > Six statistical checks across the full batch. Assigns `anomaly_score`,  
+# MAGIC > `review_priority`, and `override_suggested` to every record.
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.5  QA — Anomaly Detection")
+logger.info("=" * 60)
+
+qa_df: DataFrame = written_df
+
+# ── Check 1: Vendor-category consistency ──────────────────────────────────────
+logger.info("QA Check 1: Vendor-category consistency...")
+try:
+    hist_df: DataFrame = (
+        spark.table(HISTORICAL_TABLE)
+        .select("vendor_id", F.col("category").alias("hist_cat"), "record_count")
+    )
+    vendor_win  = Window.partitionBy("vendor_id")
+    modal_df = (
+        hist_df
+        .withColumn("_tot",  F.sum("record_count").over(vendor_win))
+        .withColumn("_rank", F.rank().over(Window.partitionBy("vendor_id").orderBy(F.desc("record_count"))))
+        .filter(F.col("_rank") == 1)
+        .select(
+            "vendor_id",
+            F.col("hist_cat").alias("modal_category"),
+        )
+        .dropDuplicates(["vendor_id"])   # break ties deterministically; prevents join fan-out
+    )
+    qa_df = (
+        qa_df
+        .join(F.broadcast(modal_df), on="vendor_id", how="left")
+        .withColumn("flag_vendor_consistency",
+            F.col("modal_category").isNotNull() & (F.col("final_category") != F.col("modal_category"))
+        )
+        .drop("modal_category")
+    )
+except Exception as e:
+    logger.warning(f"QA Check 1 skipped (historical_stats unavailable): {e}")
+    qa_df = qa_df.withColumn("flag_vendor_consistency", F.lit(False).cast(BooleanType()))
+
+c1 = qa_df.filter(F.col("flag_vendor_consistency")).count()
+logger.info(f"  Check 1 flags: {c1:,}")
+
+# ── Check 2: Amount z-score ───────────────────────────────────────────────────
+logger.info("QA Check 2: Amount z-score per category...")
+cat_win = Window.partitionBy("final_category")
+qa_df = (
+    qa_df
+    .withColumn("_cat_mean", F.mean("amount").over(cat_win))
+    .withColumn("_cat_std",  F.stddev("amount").over(cat_win))
+    .withColumn("_zscore",
+        F.when(
+            F.col("_cat_std").isNotNull() & (F.col("_cat_std") > 0),
+            F.abs((F.col("amount") - F.col("_cat_mean")) / F.col("_cat_std"))
+        ).otherwise(F.lit(0.0))
+    )
+    .withColumn("flag_amount_zscore", F.col("_zscore") > AMOUNT_ZSCORE_THRESHOLD)
+    .drop("_cat_mean", "_cat_std", "_zscore")
+)
+c2 = qa_df.filter(F.col("flag_amount_zscore")).count()
+logger.info(f"  Check 2 flags: {c2:,}")
+
+# ── Check 3: State-category history ──────────────────────────────────────────
+logger.info("QA Check 3: State-category history...")
+try:
+    state_cat_seen = F.broadcast(
+        spark.table(HISTORICAL_TABLE)
+        .select(
+            F.col("category").alias("_hcat"),
+            F.col("state").alias("_hstate"),
+        )
+        .distinct()
+    )
+    qa_df = (
+        qa_df
+        .join(
+            state_cat_seen,
+            (qa_df["final_category"] == state_cat_seen["_hcat"]) &
+            (qa_df["state"]          == state_cat_seen["_hstate"]),
+            how="left",
+        )
+        .withColumn("flag_state_history", F.col("_hcat").isNull())
+        .drop("_hcat", "_hstate")
+    )
+except Exception as e:
+    logger.warning(f"QA Check 3 skipped: {e}")
+    qa_df = qa_df.withColumn("flag_state_history", F.lit(False).cast(BooleanType()))
+c3 = qa_df.filter(F.col("flag_state_history")).count()
+logger.info(f"  Check 3 flags: {c3:,}")
+
+# ── Check 4: Rule vs classifier conflict ──────────────────────────────────────
+logger.info("QA Check 4: Rule vs classifier conflict...")
+# Rules-path records have xgboost_pred = NULL (classifier never ran on them).
+# Without the isNotNull guard, NULL != final_category → NULL, not False,
+# so the flag would silently be NULL instead of False for those records.
+qa_df = qa_df.withColumn("flag_rule_conflict",
+    (F.col("rule_match") == True) &
+    F.col("xgboost_pred").isNotNull() &
+    (F.col("final_category") != F.col("xgboost_pred"))
+)
+c4 = qa_df.filter(F.col("flag_rule_conflict")).count()
+logger.info(f"  Check 4 flags: {c4:,}")
+
+# ── Check 5: Taxability sanity ────────────────────────────────────────────────
+logger.info("QA Check 5: Taxability sanity vs state tax rules...")
+try:
+    state_rules = F.broadcast(
+        spark.table(STATE_TAX_TABLE)
+        .select(
+            F.col("state").alias("_sr_state"),
+            F.col("taxable").alias("_sr_taxable"),
+        )
+        .distinct()
+    )
+    qa_df = (
+        qa_df
+        .join(state_rules, qa_df["state"] == state_rules["_sr_state"], how="left")
+        .withColumn("flag_taxability_sanity",
+            (F.col("taxability") == "Taxable") &
+            (F.col("_sr_taxable") == False) &
+            F.col("_sr_state").isNotNull()
+        )
+        .drop("_sr_state", "_sr_taxable")
+    )
+except Exception as e:
+    logger.warning(f"QA Check 5 skipped: {e}")
+    qa_df = qa_df.withColumn("flag_taxability_sanity", F.lit(False).cast(BooleanType()))
+c5 = qa_df.filter(F.col("flag_taxability_sanity")).count()
+logger.info(f"  Check 5 flags: {c5:,}")
+
+# ── Check 6: Batch-level outlier ──────────────────────────────────────────────
+logger.info("QA Check 6: Batch-level vendor-category outlier...")
+vendor_batch_win   = Window.partitionBy("vendor_id")
+vendor_cat_bat_win = Window.partitionBy("vendor_id", "final_category")
+
+qa_df = (
+    qa_df
+    .withColumn("_vtotal", F.count("*").over(vendor_batch_win))
+    .withColumn("_vcat",   F.count("*").over(vendor_cat_bat_win))
+    .withColumn("_vshare", F.col("_vcat") / F.col("_vtotal"))
+    .withColumn("flag_batch_outlier",
+        (F.col("_vtotal") >= MIN_VENDOR_INVOICES_FOR_FLAG) &
+        (F.col("_vshare") < BATCH_OUTLIER_THRESHOLD)
+    )
+    .drop("_vtotal", "_vcat", "_vshare")
+)
+c6 = qa_df.filter(F.col("flag_batch_outlier")).count()
+logger.info(f"  Check 6 flags: {c6:,}")
+
+# ── Composite score + priority ────────────────────────────────────────────────
+qa_df = assign_priority_and_flags(qa_df)
+qa_df.cache()
+
+priority_dist = {
+    r["review_priority"]: r["count"]
+    for r in qa_df.groupBy("review_priority").count().collect()
+}
+override_count = qa_df.filter(F.col("override_suggested")).count()
+
+record_metric("step3_5_priority_dist",  priority_dist)
+record_metric("step3_5_override_count", override_count)
+logger.info(f"Priority distribution: {priority_dist}")
+logger.info(f"Records flagged for re-route: {override_count:,}")
+
+write_staging(qa_df, T_QA, "3.5-qa")
+written_df.unpersist()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 8 — Step 3.6: Re-route
+# MAGIC > Flagged records are re-classified with QA hints injected into the LLM prompt.  
+# MAGIC > Maximum **2 iterations**. Records still anomalous after 2 passes are escalated.
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.6  Re-route")
+logger.info("=" * 60)
+
+# Split pass vs flagged
+pass_df_final     = qa_df.filter(~F.col("override_suggested")).withColumn("reroute_iteration", F.lit(0).cast(IntegerType()))
+flagged_to_reroute = qa_df.filter(F.col("override_suggested")).withColumn("reroute_iteration", F.lit(0).cast(IntegerType()))
+
+pass_count_initial    = pass_df_final.count()
+flagged_count_initial = flagged_to_reroute.count()
+
+record_metric("step3_6_initial_pass",    pass_count_initial)
+record_metric("step3_6_initial_flagged", flagged_count_initial)
+logger.info(f"QA passed: {pass_count_initial:,}  |  Flagged: {flagged_count_initial:,}")
+
+resolved_batches: list[DataFrame] = [pass_df_final]
+still_flagged_df: DataFrame       = flagged_to_reroute
+
+for iteration in range(1, MAX_REROUTE_ITERATIONS + 1):
+    iter_count = still_flagged_df.count()
+    if iter_count == 0:
+        logger.info(f"Re-route iteration {iteration}: no records remain — exiting loop.")
+        break
+
+    logger.info(f"Re-route iteration {iteration}: {iter_count:,} records")
+
+    # ── Re-classify with QA hint ──────────────────────────────────────────────
+    still_flagged_df = attach_xgboost_preds(still_flagged_df)
+
+    still_flagged_df.createOrReplaceTempView(f"reroute_llm_iter{iteration}")
+    cat_list_str = ", ".join(CATEGORY_LIST)
+
+    still_flagged_df = spark.sql(f"""
+        SELECT *,
+            ai_classify(
+                CONCAT(final_description, ' [QA flags: ', array_join(anomalies, ', '), ']'),
+                {CATEGORY_SQL_ARRAY}
+            ) AS _llm_raw
+        FROM reroute_llm_iter{iteration}
+    """)
+    still_flagged_df = (
+        still_flagged_df
+        .withColumn("llm_pred",
+            F.when(F.col("_llm_raw").isNotNull(), F.col("_llm_raw.label"))
+             .otherwise(F.lit("Unknown")).cast(StringType())
+        )
+        .withColumn("llm_conf",
+            F.when(F.col("_llm_raw").isNotNull(), F.col("_llm_raw.score").cast(FloatType()))
+             .otherwise(F.lit(0.0))
+        )
+        .drop("_llm_raw")
+        .withColumn("agreement", F.col("xgboost_pred") == F.col("llm_pred"))
+        .withColumn("_min_conf", F.least(F.col("xgboost_conf"), F.col("llm_conf")))
+    )
+
+    agree_df    = still_flagged_df.filter(F.col("agreement")).cache()
+    disagree_df = still_flagged_df.filter(~F.col("agreement")).cache()
+
+    agree_count    = agree_df.count()
+    disagree_count = disagree_df.count()
+    logger.info(f"  Iter {iteration}: agree={agree_count:,}  disagree={disagree_count:,}")
+
+    agree_tagged = (
+        agree_df
+        .withColumn("final_category",      F.col("xgboost_pred"))
+        .withColumn("ensemble_confidence", (F.col("xgboost_conf") + F.col("llm_conf")) / 2)
+        .withColumn("resolution_method",   F.lit(f"reroute_accept_iter{iteration}"))
+    )
+
+    if disagree_count > 0:
+        disagree_df.drop("_min_conf").createOrReplaceTempView(f"reroute_resolve_iter{iteration}")
+        resolved_llm = spark.sql(f"""
+            SELECT *,
+                ai_query(
+                    '{LLM_ENDPOINT}',
+                    CONCAT(
+                        'REROUTE PASS {iteration}. QA flags: ', array_join(anomalies, ', '), '.',
+                        CHR(10),
+                        'XGBoost=', xgboost_pred, ' (', ROUND(xgboost_conf,3), ')',
+                        '  LLM=',  llm_pred,     ' (', ROUND(llm_conf,3), ')',
+                        CHR(10),
+                        'Description: ', final_description,
+                        '  Vendor: ', vendor_name,
+                        '  extc=', extc, ' mic=', mic_cln,
+                        CHR(10),
+                        'Pick the best category from: {cat_list_str}',
+                        CHR(10),
+                        'Reply with ONLY the category name.'
+                    )
+                ) AS _res_raw
+            FROM reroute_resolve_iter{iteration}
+        """)
+        disagree_tagged = (
+            resolved_llm
+            .withColumn("final_category",      F.trim(F.col("_res_raw")).cast(StringType()))
+            .withColumn("ensemble_confidence",  F.greatest(F.col("xgboost_conf"), F.col("llm_conf")))
+            .withColumn("resolution_method",    F.lit(f"reroute_resolve_iter{iteration}"))
+            .drop("_res_raw", "_min_conf")
+        )
+    else:
+        disagree_tagged = (
+            disagree_df.drop("_min_conf")
+            .withColumn("final_category",      F.col("xgboost_pred"))
+            .withColumn("ensemble_confidence", F.col("xgboost_conf"))
+            .withColumn("resolution_method",   F.lit(f"reroute_resolve_iter{iteration}"))
+        )
+
+    iter_reclassified = agree_tagged.drop("_min_conf").unionByName(
+        disagree_tagged, allowMissingColumns=True
+    )
+    agree_df.unpersist()
+    disagree_df.unpersist()
+
+    # ── Re-apply Tax Lookup + Use Tax ─────────────────────────────────────────
+    iter_reclassified = apply_tax_lookup(iter_reclassified)
+
+    # ── Re-apply Tax Writer (no RAG for speed on re-route) ───────────────────
+    iter_reclassified = iter_reclassified.withColumn(
+        "prior_writeup_examples", F.lit("").cast(StringType())
+    )
+    iter_reclassified = apply_tax_writer(iter_reclassified, temp_view_suffix=f"_reroute_iter{iteration}")
+    iter_reclassified = iter_reclassified.drop("prior_writeup_examples")
+
+    # ── Re-apply QA scoring ───────────────────────────────────────────────────
+    iter_reclassified = assign_priority_and_flags(iter_reclassified)
+    iter_reclassified = iter_reclassified.withColumn(
+        "reroute_iteration", F.lit(iteration).cast(IntegerType())
+    )
+
+    # Split: resolved vs still anomalous
+    now_resolved  = iter_reclassified.filter(~F.col("override_suggested"))
+    still_flagged_df = iter_reclassified.filter(F.col("override_suggested"))
+
+    resolved_this_iter = now_resolved.count()
+    still_count        = still_flagged_df.count()
+    logger.info(f"  Iteration {iteration}: {resolved_this_iter:,} resolved  |  {still_count:,} still flagged")
+
+    resolved_batches.append(now_resolved)
+
+# ── Escalate remaining flagged records ────────────────────────────────────────
+escalated_df: DataFrame = still_flagged_df.withColumn(
+    "recommendation",
+    F.lit(f"ESCALATED: Unresolved after {MAX_REROUTE_ITERATIONS} re-route passes. Manual review required.")
+)
+escalated_count = escalated_df.count()
+record_metric("step3_6_escalated", escalated_count)
+logger.info(f"Escalated (unresolved): {escalated_count:,}")
+resolved_batches.append(escalated_df)
+
+# ── Union all into final rerouted ─────────────────────────────────────────────
+rerouted_df: DataFrame = resolved_batches[0]
+for part in resolved_batches[1:]:
+    rerouted_df = rerouted_df.unionByName(part, allowMissingColumns=True)
+
+rerouted_df.cache()
+write_staging(rerouted_df, T_REROUTED, "3.6-rerouted")
+qa_df.unpersist()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 9 — Step 3.7: Write Final Output & Notify
+# MAGIC > Applies the canonical output schema, writes to `atims_prod`, validates row counts,  
+# MAGIC > then fires the FastAPI webhook to open the reviewer queue.
+
+# COMMAND ----------
+
+logger.info("=" * 60)
+logger.info("STEP 3.7  Write Final Output & Notify")
+logger.info("=" * 60)
+
+# ── Derive processing_path ────────────────────────────────────────────────────
+final_df: DataFrame = rerouted_df.withColumn("processing_path",
+    F.when(F.col("match_type") == "deterministic",                     F.lit("FAST_DETERMINISTIC"))
+     .when(F.col("match_type") == "rag",                               F.lit("FAST_RAG"))
+     .when(F.col("resolution_method").startswith("reroute"),           F.lit("ESCALATION_REROUTED"))
+     .when(F.col("resolution_method") == "llm_resolution",            F.lit("COMPLEX_LLM_RESOLVED"))
+     .when(F.col("resolution_method").isin("ACCEPT", "MEDIUM"),       F.lit("STANDARD_CLASSIFIER"))
+     .otherwise(F.lit("UNKNOWN"))
+)
+
+# ── Inject pipeline metadata ──────────────────────────────────────────────────
+final_df = (
+    final_df
+    .withColumn("reviewed_by",        F.lit(None).cast(StringType()))
+    .withColumn("pipeline_run_month", F.lit(RUN_MONTH))
+    .withColumn("pipeline_run_ts",    F.lit(RUN_TS).cast(TimestampType()))
+)
+
+# ── Rename columns to canonical output names ─────────────────────────────────
+# These renames must happen BEFORE the column selection below.
+# Order matters: rule_match → rule_applied, final_category → category
+# ── Rename to canonical output names (must precede column selection) ──────────
+if "rule_match" in final_df.columns and "rule_applied" not in final_df.columns:
+    final_df = final_df.withColumnRenamed("rule_match", "rule_applied")
+
+if "final_category" in final_df.columns and "category" not in final_df.columns:
+    final_df = final_df.withColumnRenamed("final_category", "category")
+
+# Architecture doc uses "anomaly_flags" (array) — rename from internal "anomalies"
+if "anomalies" in final_df.columns:
+    final_df = final_df.withColumnRenamed("anomalies", "anomaly_flags")
+
+# Architecture doc output includes "components_used" — derive from processing_path + match_type
+# Gives the Reviewer Agent a human-readable description of which pipeline components fired.
+final_df = final_df.withColumn("components_used",
+    F.when(F.col("processing_path") == "FAST_DETERMINISTIC",  F.lit("rules_expert(det)→tax_lookup→tax_writer→qa"))
+     .when(F.col("processing_path") == "FAST_RAG",            F.lit("rules_expert(rag)→tax_lookup→tax_writer→qa"))
+     .when(F.col("processing_path") == "STANDARD_CLASSIFIER", F.lit("rules_expert→xgboost+ai_classify→tax_lookup→tax_writer→qa"))
+     .when(F.col("processing_path") == "COMPLEX_LLM_RESOLVED",F.lit("rules_expert→xgboost+ai_classify→gpt4o_resolve→tax_lookup→tax_writer→qa"))
+     .when(F.col("processing_path") == "ESCALATION_REROUTED", F.lit("rules_expert→classifier→qa_flag→reroute(x2)→tax_lookup→tax_writer→qa"))
+     .otherwise(F.lit("unknown"))
+)
+
+# ── Null-fill columns absent on the rules path ────────────────────────────────
+for _col, _dtype in [
+    ("xgboost_pred",        StringType()),
+    ("xgboost_conf",        FloatType()),
+    ("llm_pred",            StringType()),
+    ("llm_conf",            FloatType()),
+    ("agreement",           BooleanType()),
+    ("ensemble_confidence", FloatType()),
+    ("resolution_method",   StringType()),
+    ("reroute_iteration",   IntegerType()),
+]:
+    if _col not in final_df.columns:
+        final_df = final_df.withColumn(_col, F.lit(None).cast(_dtype))
+
+# ── Canonical output column list ──────────────────────────────────────────────
+CANONICAL_COLS = [
+    # Identity
+    "invoice_id", "inv_line_number",
+    # Invoice content
+    "final_description", "vendor_name", "vendor_id", "extc", "mic_cln", "account_code",
+    "state", "amount", "use_tax_amount", "entity_code",
+    # Classification
+    "category", "taxability", "Reverse_UseTax", "confidence", "ensemble_confidence",
+    # Processing path (matches architecture doc output spec)
+    "rule_applied", "rule_id", "match_type", "resolution_method",
+    "reroute_iteration", "processing_path", "components_used",
+    # Classifier details (for Reviewer Agent trace)
+    "xgboost_pred", "xgboost_conf", "llm_pred", "llm_conf", "agreement",
+    # Write-up
+    "short_justification", "full_writeup", "reviewer_note", "audit_ready",
+    # QA  — "anomaly_flags" matches architecture doc output spec
+    "anomaly_score", "anomaly_flags", "review_priority", "override_suggested", "recommendation",
+    # Metadata
+    "reviewed_by", "pipeline_run_month", "pipeline_run_ts",
+]
+
+# Only select columns that actually exist (guards against optional columns)
+output_cols = [c for c in CANONICAL_COLS if c in final_df.columns]
+final_df    = final_df.select(output_cols)
+
+# ── Quality gate ──────────────────────────────────────────────────────────────
+final_count = final_df.count()
+if final_count != TOTAL_RECORDS:
+    raise ValueError(
+        f"Row count mismatch — input: {TOTAL_RECORDS:,}, output: {final_count:,}. "
+        "Check for fan-out in joins (taxability_matrix may have duplicate cluster+state rows) "
+        "or data loss during re-route union. Investigate before proceeding."
+    )
+logger.info(f"Quality gate passed: {final_count:,} records in = {final_count:,} records out.")
+
+# ── Collect metrics now, before write (avoids re-scanning the prod table) ─────
+final_df.cache()
+flagged_review    = final_df.filter(F.col("review_priority").isin("HIGH", "CRITICAL")).count()
+audit_ready_final = final_df.filter(F.col("audit_ready") == True).count()
+path_dist = {
+    r["processing_path"]: r["count"]
+    for r in final_df.groupBy("processing_path").count().collect()
+}
+priority_dist_final = {
+    r["review_priority"]: r["count"]
+    for r in final_df.groupBy("review_priority").count().collect()
+}
+
+# ── Write to production ───────────────────────────────────────────────────────
+logger.info(f"Writing to production: {OUTPUT_TABLE}")
+(
+    final_df
+    .write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .partitionBy("pipeline_run_month")
+    .saveAsTable(OUTPUT_TABLE)
+)
+final_df.unpersist()
+logger.info(f"Production write complete: {final_count:,} records → {OUTPUT_TABLE}")
+
+# ── Record metrics ────────────────────────────────────────────────────────────
+record_metric("step3_7_total_written",    final_count)
+record_metric("step3_7_flagged_review",   flagged_review)
+record_metric("step3_7_audit_ready",      audit_ready_final)
+record_metric("step3_7_processing_paths", path_dist)
+record_metric("step3_7_review_priority",  priority_dist_final)
+
+# ── FastAPI webhook ───────────────────────────────────────────────────────────
+webhook_payload = {
+    "event":              "phase3_complete",
+    "month":              RUN_MONTH,
+    "records_processed":  final_count,
+    "flagged_count":      flagged_review,
+    "audit_ready_count":  audit_ready_final,
+    "output_table":       OUTPUT_TABLE,
+    "run_ts":             RUN_TS,
+}
+
+if FASTAPI_WEBHOOK_URL:
+    try:
+        resp = requests.post(
+            FASTAPI_WEBHOOK_URL,
+            json=webhook_payload,
+            timeout=WEBHOOK_TIMEOUT_SECONDS,
+            headers={"Content-Type": "application/json"},
+        )
+        resp.raise_for_status()
+        logger.info(f"Webhook fired → {FASTAPI_WEBHOOK_URL}  ({resp.status_code})")
+    except requests.exceptions.RequestException as exc:
+        # Non-fatal: output is already written, flag for ops team
+        logger.error(f"Webhook failed (non-fatal): {exc}")
+        logger.warning("Reviewer queue must be triggered manually. Check FastAPI logs.")
+else:
+    logger.info("No webhook URL configured (secret 'atims/fastapi_webhook_url') — skipping.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## SECTION 10 — Pipeline Summary
+
+# COMMAND ----------
+
+logger.info("=" * 70)
+logger.info("ATIMS Phase 3 — Pipeline Complete")
+logger.info("=" * 70)
+
+summary = {
+    **_metrics,
+    "output_table": OUTPUT_TABLE,
+    "webhook_fired": bool(FASTAPI_WEBHOOK_URL),
+}
+
+print(json.dumps(summary, indent=2, default=str))
+
+# ── Display summary as notebook table ────────────────────────────────────────
+rows = [{"metric": k, "value": str(v)} for k, v in summary.items()]
+display(spark.createDataFrame(rows))
