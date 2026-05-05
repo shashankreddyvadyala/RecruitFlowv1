@@ -1,0 +1,937 @@
+================================================================================
+INVOICE TAXABILITY CLASSIFICATION — FULL ARCHITECTURE
+================================================================================
+
+ARCHITECTURE APPROACH: HYBRID
+  ├── Databricks (Phases 1-3): Batch classification pipeline
+  │     Spark jobs + Foundation Model APIs + MLflow — all compute runs
+  │     natively on the data, eliminating cross-service API overhead
+  │
+  └── AAW / LangGraph (Phases 4-5): UI-focused agents only
+        Reviewer Agent (ReAct, conversational, per-session)
+        Feedback Agent (triggered on corrections + monthly)
+        Labeling Agent (monthly label audit)
+
+
+================================================================================
+PHASE 1: DATA INGESTION (Databricks — Batch, Monthly)
+================================================================================
+
+Source Systems:
+  ├── Oracle EBS (AP_INVOICES_ALL, AP_INVOICE_LINES_ALL,
+  │               AP_INVOICE_DISTRIBUTIONS_ALL, GL_CODE_COMBINATIONS,
+  │               SWAP_PO_VENDORS_NEW_V, FA_LOCATIONS)
+  │
+  └── Palantir Foundry (NORAD daily data via pypalantir SDK)
+
+Process:
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  STEP 1.1: Read source tables from Delta Lake                    │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ AP_INVOICES_ALL                                            │  │
+  │  │ AP_INVOICE_LINES_ALL                                       │  │
+  │  │ AP_INVOICE_DISTRIBUTIONS_ALL                               │  │
+  │  │ GL_CODE_COMBINATIONS                                       │  │
+  │  │ SWAP_PO_VENDORS_NEW_V                                      │  │
+  │  │ FA_LOCATIONS                                               │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 1.2: Join and consolidate                                  │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ invoice_lines                                              │  │
+  │  │   JOIN invoices ON invoice_id                              │  │
+  │  │   JOIN distributions ON (invoice_id, line_number)          │  │
+  │  │   JOIN gl_codes ON code_combination_id                     │  │
+  │  │   JOIN vendors ON vendor_id                                │  │
+  │  │   JOIN locations ON location_id                            │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 1.3: Extract key fields                                    │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ invoice_id, inv_line_number, invoice_date, accounting_date │  │
+  │  │ vendor_name, vendor_id                                     │  │
+  │  │ description (line item text)                               │  │
+  │  │ amount                                                     │  │
+  │  │ extc (expenditure type code)                               │  │
+  │  │ mic_cln (material/item code)                               │  │
+  │  │ account_code (GL account)                                  │  │
+  │  │ state (from FA_LOCATIONS)                                  │  │
+  │  │ entity_code                                                │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 1.4: Write to consolidated Delta table                     │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ OUTPUT: atims_shared.staging.ap_nontax_consolidated        │  │
+  │  │ (abfss://ap-data@prdatimsstore.dfs.core.windows.net/...)  │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  └──────────────────────────────────────────────────────────────────┘
+
+  Runtime: Spark batch job on Databricks
+  Schedule: Monthly
+  Cluster: Standard compute (no GPU needed)
+
+
+================================================================================
+PHASE 2: DATA PREPROCESSING & FEATURE ENGINEERING (Databricks — Batch)
+================================================================================
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  STEP 2.1: Load and filter                                       │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ Read: atims_shared.staging.ap_nontax_consolidated          │  │
+  │  │ Filter: description word count > 2                         │  │
+  │  │ Filter: current month's accounting_date                    │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 2.2: Text cleaning                                         │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ Lowercase all text fields                                  │  │
+  │  │ Remove punctuation                                         │  │
+  │  │ Remove stop words ("invoice", "po", etc.)                  │  │
+  │  │ Trim whitespace                                            │  │
+  │  │ Concatenate description fields → final_description         │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 2.3: Generate embeddings (GTE Large)                       │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ Endpoint: databricks-gte-large-en                          │  │
+  │  │ Input: final_description (cleaned text)                    │  │
+  │  │ Output: 1024-dim dense vector per record                   │  │
+  │  │ Batch process: 100K records via Spark UDF                  │  │
+  │  │                                                            │  │
+  │  │ REPLACES:                                                  │  │
+  │  │   OLD: TF-IDF (1000-dim sparse) + PCA (reduce to 400)     │  │
+  │  │   OLD: BertSentenceEmbeddings (768-dim) + PCA (to 300)    │  │
+  │  │   NEW: GTE Large (1024-dim dense, no PCA needed)           │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 2.4: Prepare training data                                 │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ Read: atims_shared.training.non_norad_labels               │  │
+  │  │       (includes reviewer corrections from Feedback Agent)  │  │
+  │  │ Join: embeddings + labels ON (invoice_id, inv_line_number) │  │
+  │  │ Compute: class weights (handle imbalanced categories)      │  │
+  │  │ StringIndex: cluster name → numeric label                  │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 2.5: Train XGBoost classifier                              │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ Input: GTE Large embeddings (1024-dim)                     │  │
+  │  │ Labels: 120 cluster categories                             │  │
+  │  │ Params:                                                    │  │
+  │  │   objective: multi:softprob                                │  │
+  │  │   treeMethod: gpu_hist                                     │  │
+  │  │   maxDepth: 6                                              │  │
+  │  │   numRound: 100                                            │  │
+  │  │ Output: Trained XGBoost model                              │  │
+  │  │ Register: atims_shared.models.xgboost_non_norad (MLflow)   │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 2.6: Deploy XGBoost as serving endpoint                    │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ Deploy latest "production" tagged model version             │  │
+  │  │ Endpoint accepts: embedding vector (1024-dim)              │  │
+  │  │ Endpoint returns: predicted category + probabilities        │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  STEP 2.7: Write prediction-ready data                           │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │ OUTPUT: atims_shared.staging.prediction_ready               │  │
+  │  │ Contains:                                                  │  │
+  │  │   invoice_id, inv_line_number, final_description,          │  │
+  │  │   vendor_name, extc, mic_cln, account_code, state,         │  │
+  │  │   amount, entity_code, gte_embedding (1024-dim)            │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  └──────────────────────────────────────────────────────────────────┘
+
+  Runtime: Spark batch job on Databricks (GPU cluster for XGBoost)
+  Schedule: Monthly (after Phase 1 completes)
+  Retraining: Monthly (Feedback Agent triggers when corrections accumulate)
+
+
+================================================================================
+PHASE 3: BATCH CLASSIFICATION PIPELINE (Databricks — Spark Notebook)
+================================================================================
+
+Input:  atims_shared.staging.prediction_ready (Delta table from Phase 2)
+Output: atims_prod.ml_output.non_norad_predictions (Delta table)
+
+Runtime: Databricks Workflow Task (runs after Phase 2 completes)
+Cluster:  Standard compute (GPU not required for inference)
+
+Rationale for Databricks (not AAW/LangGraph):
+  - All data, models, and knowledge bases already live in Databricks
+  - Eliminates 100K+ cross-service API calls per month
+  - Spark parallelism >> asyncio.gather for batch throughput
+  - Native MLflow integration for full traceability
+  - Foundation Model APIs (ai_query, ai_classify) available natively
+  - Batch-level QA context (full month's data in one DataFrame)
+  - Estimated cost reduction: ~50-60% vs AAW-hosted approach
+
+Databricks AI Capabilities Used:
+  - ai_classify()        : SQL function for zero-shot LLM classification
+  - ai_query()           : SQL function for Foundation Model API calls
+  - Vector Search SDK    : Batch similarity search (Rules KB, Write-ups KB)
+  - Model Serving        : XGBoost endpoint (xgboost-non-norad)
+  - Foundation Model API : GPT-4o for orchestrator LLM resolution
+  - MLflow               : Experiment tracking + model registry
+
+Notebook/Task Structure:
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.1: Rules Expert                                         │
+  │                                                                 │
+  │  Action 1: Deterministic lookup (Spark SQL JOIN)                │
+  │    SELECT * FROM prediction_ready r                             │
+  │    JOIN deterministic_rules d                                   │
+  │      ON r.extc=d.extc AND r.mic_cln=d.mic AND                  │
+  │         r.account_code=d.account_code                           │
+  │    → rules_matched_df (category + confidence=1.0)               │
+  │    → no_rules_df (left anti join)                               │
+  │                                                                 │
+  │  Action 2: Vector search fallback on no_rules_df                │
+  │    vsc = VectorSearchClient()                                   │
+  │    index = vsc.get_index("rules_kb_index")                      │
+  │    Batch similarity search on final_description                 │
+  │    → rag_matched_df (strong match: category + rule_id)          │
+  │    → unmatched_df (no match)                                    │
+  │                                                                 │
+  │  Output columns added: rule_match, rule_id, category,           │
+  │                         confidence, match_type                  │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.2: Classifier (on unmatched_df only)                    │
+  │                                                                 │
+  │  Sub-model A: XGBoost (batch predict via model serving)         │
+  │    client = get_deploy_client("databricks")                     │
+  │    preds = client.predict("xgboost-non-norad",                  │
+  │                           {"inputs": embeddings_list})          │
+  │    → xgboost_pred, xgboost_conf per record                      │
+  │                                                                 │
+  │  Sub-model B: LLM zero-shot via ai_classify()                   │
+  │    SELECT *, ai_classify(final_description,                     │
+  │      ARRAY('Cable - Metallic', 'Software License', ...))        │
+  │      AS llm_category FROM unmatched_temp                        │
+  │    → gemma_pred, gemma_conf per record                          │
+  │                                                                 │
+  │  Agreement Logic (Spark DataFrame operations):                  │
+  │    Both agree + conf > 0.8 → ACCEPT (final_category set)        │
+  │    Both agree + low conf  → MEDIUM confidence                   │
+  │    Disagree               → orchestrator_df (LLM resolution)   │
+  │                                                                 │
+  │  LLM Resolution (on orchestrator_df, ~10-15% of unmatched):     │
+  │    ai_query('databricks-gpt-4o',                                │
+  │      CONCAT('XGBoost predicted: ', xgboost_pred,                │
+  │             ', LLM predicted: ', llm_category,                  │
+  │             ', Description: ', final_description,               │
+  │             '. Resolve to best category from: ...'))            │
+  │                                                                 │
+  │  Output columns: xgboost_pred, xgboost_conf, llm_pred,          │
+  │                  llm_conf, agreement, final_category,           │
+  │                  ensemble_confidence                            │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.3: Tax Lookup (pure SQL JOIN)                           │
+  │                                                                 │
+  │  SELECT r.*, m.taxability                                       │
+  │  FROM classified_df r                                           │
+  │  LEFT JOIN atims_shared.reference.taxability_matrix m           │
+  │    ON r.final_category = m.cluster                              │
+  │    AND r.state = m.state                                        │
+  │                                                                 │
+  │  Note: Tax Reasoning agent removed. Records with no             │
+  │  matrix match receive taxability=NULL and are flagged           │
+  │  for human review (review_priority escalated to HIGH).          │
+  │                                                                 │
+  │  Output columns: taxability ("Taxable"|"Exempt"|null),          │
+  │                  tax_source ("matrix"|"no_match")               │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.3b: Use Tax Lookup (Spark DataFrame operation)          │
+  │                                                                 │
+  │  Evaluates whether a use tax reversal applies to each record.   │
+  │  Determination is based solely on the use_tax_amount input      │
+  │  column sourced from the upstream AP system.                    │
+  │                                                                 │
+  │  Logic (Spark withColumn):                                      │
+  │    CASE                                                         │
+  │      WHEN use_tax_amount > 0 AND taxability = 'Exempt'          │
+  │        THEN 'Yes'   -- use tax paid but invoice is exempt;      │
+  │                        reversal required                        │
+  │      WHEN use_tax_amount > 0 AND taxability = 'Taxable'         │
+  │        THEN 'No'    -- use tax paid; no reversal needed         │
+  │      WHEN use_tax_amount = 0                                    │
+  │        THEN 'No'    -- no use tax present                       │
+  │      WHEN use_tax_amount IS NULL                                │
+  │        THEN NULL    -- DEFERRED: pending client clarification   │
+  │                        (NULL = no use tax vs. data gap?)        │
+  │      WHEN taxability IS NULL                                    │
+  │        THEN NULL    -- taxability unresolved; cannot determine  │
+  │    END AS Reverse_UseTax                                        │
+  │                                                                 │
+  │  Input columns consumed: use_tax_amount (number), taxability    │
+  │  Output column added:    Reverse_UseTax ('Yes'|'No'|null)       │
+  │  Open question: confirm NULL use_tax_amount treatment with      │
+  │    client before finalising this branch                        │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.4: Tax Writer (batch LLM via ai_query())                │
+  │                                                                 │
+  │  FAST path (matrix hit, ~85%): template-based write-up          │
+  │    RAG: Vector Search on Prior Write-ups KB (batch)             │
+  │    ai_query('databricks-gpt-4o',                                │
+  │      CONCAT('Generate audit-ready taxability justification.     │
+  │             Category: ', final_category, ', State: ', state,    │
+  │             ', Taxability: ', taxability,                       │
+  │             ', Reverse_UseTax: ', Reverse_UseTax,              │
+  │             '. Prior examples: ', retrieved_writeups))          │
+  │                                                                 │
+  │  Note: When Reverse_UseTax = 'Yes', the write-up must           │
+  │  explicitly state that use tax reversal is required and         │
+  │  include use_tax_amount in the justification.                   │
+  │                                                                 │
+  │  Output columns: short_justification, full_writeup,             │
+  │                  reviewer_note, audit_ready                     │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.5: QA (Spark DataFrame operations + window functions)   │
+  │                                                                 │
+  │  Check 1: Vendor-category consistency                           │
+  │    Window: partitionBy(vendor_id), count category freq          │
+  │    Flag if current category != modal category for vendor        │
+  │                                                                 │
+  │  Check 2: Amount reasonableness                                 │
+  │    Window: partitionBy(final_category)                          │
+  │    Z-score on amount vs category historical distribution        │
+  │                                                                 │
+  │  Check 3: State-category history                                │
+  │    JOIN against historical_stats table                          │
+  │    Flag new combinations not seen in prior 12 months            │
+  │                                                                 │
+  │  Check 4: Cross-validation                                      │
+  │    Flag if rule_match=true but classifier agrees on             │
+  │    different category (conflict between rule and ML)            │
+  │                                                                 │
+  │  Check 5: Taxability sanity                                     │
+  │    JOIN against state_service_tax_rules table                   │
+  │    Flag if Service taxable in no-service-tax state              │
+  │                                                                 │
+  │  Check 6: Batch-level outlier detection (NEW vs AAW approach)   │
+  │    Flag records where category differs from 95%+ of same-       │
+  │    vendor records in current month's batch                      │
+  │                                                                 │
+  │  Output columns: anomalies (array), anomaly_score (0.0-1.0),    │
+  │                  review_priority (LOW/MED/HIGH/CRITICAL),       │
+  │                  override_suggested, recommendation             │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.6: Re-route (iterate on flagged records, max 2 passes)  │
+  │                                                                 │
+  │  Filter: WHERE override_suggested = true AND iteration < 2      │
+  │  Re-run TASK 3.2 (Classifier) with QA hint injected into prompt │
+  │  Update iteration count, re-run TASKS 3.3, 3.3b, 3.4, 3.5      │
+  │  Remaining anomalies after 2 iterations → ESCALATION path       │
+  └─────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TASK 3.7: Write Final Output                                   │
+  │                                                                 │
+  │  Merge all DataFrames (rules_matched + rag_matched + classified) │
+  │  Write to: atims_prod.ml_output.non_norad_predictions           │
+  │  Trigger: POST webhook to FastAPI backend                        │
+  │           {month, records_processed, flagged_count}             │
+  └─────────────────────────────────────────────────────────────────┘
+
+
+COMPONENT ROSTER
+================================================================================
+
+  DATABRICKS PIPELINE (Phases 1-3) — Spark notebook tasks, no LangGraph
+  ─────────────────────────────────────────────────────────────────────
+  Component            Technology                Trigger
+  ---------            ----------                -------
+  Rules Expert         Spark SQL JOIN +          Every record (vectorized)
+                       Vector Search SDK
+  Classifier           XGBoost endpoint +        When no rule match
+                       ai_classify() SQL fn
+  Orchestrator LLM     ai_query() / GPT-4o       Classifier disagreement only
+  Tax Lookup           Spark SQL JOIN            Every record (vectorized)
+  Tax Writer           ai_query() / GPT-4o       Every record
+  QA                   Spark window functions +  Every record (vectorized)
+                       statistical checks
+
+  AAW / LANGGRAPH (Phases 4-5) — HTTP endpoints, conversational agents
+  ─────────────────────────────────────────────────────────────────────
+  Agent                Model                     Trigger
+  -----                -----                     -------
+  Reviewer             GPT-4o (ChatLiteLLM)      UI — on reviewer interaction
+                       ReAct pattern             (conversational, per-session)
+  Feedback             GPT-4o (ChatLiteLLM)      On reviewer correction +
+                                                 monthly scheduled run
+  Labeling             GPT-4o (ChatLiteLLM)      Monthly scheduled run
+
+
+KNOWLEDGE BASES (Databricks Vector Search)
+================================================================================
+
+  KB Name                 Embedding Model          Source Table                              Consumer
+  -------                 ---------------          ------------                              --------
+  Rules KB                databricks-gte-large-en  atims_shared.reference.deterministic_rules  Phase 3 (batch SDK)
+  Category Definitions    databricks-gte-large-en  atims_shared.reference.category_definitions Phase 3 (batch SDK)
+  Prior Write-ups KB      databricks-gte-large-en  atims_shared.reference.tax_writeups         Phase 3 (batch SDK)
+  Rules KB (write)        n/a                      atims_shared.reference.deterministic_rules  Reviewer Agent (AAW)
+
+  Note: Tax Law KB removed (was used by Tax Reasoning agent, which has been removed).
+
+
+PHASE 3 DATA FLOW — SPARK DATAFRAME PIPELINE
+================================================================================
+
+  prediction_ready Delta table (100K records)
+  │
+  ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  TASK 3.1: RULES EXPERT                                  │
+  │  Technology: Spark SQL JOIN + Vector Search SDK (batch)  │
+  │                                                          │
+  │  Pass 1 — Deterministic (Spark SQL):                     │
+  │    JOIN on extc + mic_cln + account_code                  │
+  │    → rules_matched_df  (confidence=1.0, match_type=det)  │
+  │    → no_rules_df       (left anti join)                  │
+  │                                                          │
+  │  Pass 2 — Vector search on no_rules_df:                  │
+  │    Batch similarity search → Rules KB                    │
+  │    → rag_matched_df    (strong match, match_type=rag)    │
+  │    → unmatched_df      (no match)                        │
+  └────────────────────┬─────────────────────────────────────┘
+                       │
+            ┌──────────┴──────────┐
+      rules_matched           unmatched_df
+      + rag_matched               │
+            │                     ▼
+            │    ┌────────────────────────────────────────────┐
+            │    │  TASK 3.2: CLASSIFIER                      │
+            │    │  Technology: XGBoost endpoint + ai_classify│
+            │    │                                            │
+            │    │  Sub-model A: XGBoost (batch serving call) │
+            │    │    Input: gte_embedding (1024-dim)          │
+            │    │    → xgboost_pred, xgboost_conf            │
+            │    │                                            │
+            │    │  Sub-model B: ai_classify() SQL function   │
+            │    │    Input: final_description + 120 labels   │
+            │    │    → llm_pred, llm_conf                    │
+            │    │                                            │
+            │    │  Agreement Logic (DataFrame operations):   │
+            │    │    Both agree + conf > 0.8 → ACCEPT        │
+            │    │    Both agree + low conf → MEDIUM          │
+            │    │    Disagree → ai_query() LLM resolution    │
+            │    │      (GPT-4o, ~10-15% of unmatched)        │
+            │    └───────────────────┬────────────────────────┘
+            │                        │
+            └──────────┬─────────────┘
+                       │ (all records unified with final_category)
+                       ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  TASK 3.3: TAX LOOKUP                                    │
+  │  Technology: Spark SQL LEFT JOIN                         │
+  │                                                          │
+  │  LEFT JOIN atims_shared.reference.taxability_matrix      │
+  │    ON final_category = cluster AND state = state         │
+  │  → taxability: "Taxable" | "Exempt" | null               │
+  │  → tax_source: "matrix" | "no_match"                     │
+  │                                                          │
+  │  Records with null taxability → review_priority = HIGH   │
+  │  (Tax Reasoning agent removed — null = escalate to human)│
+  └────────────────────┬─────────────────────────────────────┘
+                       │
+                       ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  TASK 3.3b: USE TAX LOOKUP                               │
+  │  Technology: Spark DataFrame withColumn (pure logic)     │
+  │                                                          │
+  │  CASE WHEN use_tax_amount > 0 AND taxability='Exempt'    │
+  │       THEN 'Yes'                                         │
+  │       WHEN use_tax_amount > 0 AND taxability='Taxable'   │
+  │       THEN 'No'                                          │
+  │       WHEN use_tax_amount = 0 THEN 'No'                  │
+  │       WHEN use_tax_amount IS NULL THEN NULL  -- DEFERRED │
+  │       WHEN taxability IS NULL THEN NULL                  │
+  │       END AS Reverse_UseTax                              │
+  │  → Reverse_UseTax: 'Yes' | 'No' | null                   │
+  └────────────────────┬─────────────────────────────────────┘
+                       │
+                       ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  TASK 3.4: TAX WRITER                                    │
+  │  Technology: ai_query() + Vector Search (batch RAG)      │
+  │                                                          │
+  │  1. Batch RAG: retrieve similar prior write-ups          │
+  │  2. ai_query('gpt-4o', structured prompt with            │
+  │     category + state + taxability +                      │
+  │     Reverse_UseTax + use_tax_amount + prior examples)    │
+  │  Note: Reverse_UseTax='Yes' → write-up must state        │
+  │        use tax reversal is required + amount             │
+  │  → short_justification, full_writeup, audit_ready        │
+  └────────────────────┬─────────────────────────────────────┘
+                       │
+                       ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  TASK 3.5: QA                                            │
+  │  Technology: Spark window functions + statistical checks │
+  │                                                          │
+  │  1. Vendor-category consistency  (window partitionBy)    │
+  │  2. Amount z-score               (window partitionBy)    │
+  │  3. State-category history       (JOIN historical_stats) │
+  │  4. Rule vs classifier conflict  (column comparison)     │
+  │  5. Taxability sanity            (JOIN state_rules table) │
+  │  6. Batch-level outlier          (current month context) │
+  │                                                          │
+  │  → anomaly_score, review_priority, override_suggested    │
+  └────────────────────┬─────────────────────────────────────┘
+                       │
+            ┌──────────┴──────────┐
+         PASS                 ANOMALY (override_suggested)
+            │                     │
+            │                     ▼
+            │    ┌────────────────────────────────────────────┐
+            │    │  TASK 3.6: RE-ROUTE (max 2 iterations)     │
+            │    │  Filter flagged records, re-run TASK 3.2   │
+            │    │  with QA hint in LLM prompt                 │
+            │    │  Re-run TASKS 3.3, 3.3b, 3.4, 3.5          │
+            │    │  Remaining anomalies → ESCALATION path      │
+            │    └───────────────────┬────────────────────────┘
+            │                        │
+            └──────────┬─────────────┘
+                       │
+                       ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │  TASK 3.7: WRITE FINAL OUTPUT + NOTIFY                   │
+  │                                                          │
+  │  Merge all DataFrames → final output schema              │
+  │  {                                                        │
+  │    invoice_id, inv_line_number, final_description,        │
+  │    vendor_name, state, amount, category, taxability,      │
+  │    use_tax_amount, Reverse_UseTax,                        │
+  │    confidence, rule_applied, short_justification,         │
+  │    full_writeup, anomaly_flags, review_priority,          │
+  │    components_used, reviewed_by, processing_path          │
+  │  }                                                        │
+  │                                                          │
+  │  Write:  atims_prod.ml_output.non_norad_predictions       │
+  │  Notify: POST webhook → FastAPI backend                   │
+  │          {month, records_processed, flagged_count}        │
+  └──────────────────────────────────────────────────────────┘
+
+
+PROCESSING PATHS SUMMARY
+================================================================================
+
+  Note: All paths are now Databricks Spark batch operations (not per-record
+  LangGraph executions). "Latency" below refers to per-record effective
+  processing time within the batch job, not wall-clock end-to-end.
+
+  FAST PATH (est. 60% of records):
+    Rules Expert (deterministic SQL match) → Tax Lookup (matrix JOIN)
+    → Tax Writer (ai_query) → QA (window functions, pass) → Output
+    Cost: ~$0.004/record  (SQL + one ai_query call)
+    Effective latency: <1 second
+
+  STANDARD PATH (est. 25% of records):
+    Rules Expert (no match) → Classifier (XGBoost + ai_classify, agree)
+    → Tax Lookup (matrix JOIN) → Tax Writer (ai_query) → QA (pass) → Output
+    Cost: ~$0.006/record  (XGBoost endpoint + ai_classify + ai_query)
+    Effective latency: ~1-2 seconds
+
+  COMPLEX PATH (est. 10% of records):
+    Rules Expert (no match) → Classifier (disagree)
+    → LLM resolution (ai_query) → Tax Lookup → Tax Writer → QA (pass) → Output
+    Cost: ~$0.015/record  (two ai_query calls)
+    Effective latency: ~2-4 seconds
+
+  ESCALATION PATH (est. 5% of records):
+    Full pipeline → QA flags anomaly → Re-route (max 2 passes)
+    → Still uncertain or null taxability → Flagged for human review
+    Cost: ~$0.020/record + human review time
+    Latency: Async (human in loop via Reviewer Agent)
+
+
+================================================================================
+PHASE 4: PERIODIC AGENTS (AAW / LangGraph — Scheduled)
+================================================================================
+
+  Both periodic agents are hosted on AAW (LangGraph) — they are low-volume,
+  scheduled tasks that benefit from LangGraph's tool-calling and ReAct patterns.
+  They communicate back to Databricks via the Databricks REST API and SQL connector.
+
+  ┌──────────────────────────────────────────────────────────┐
+  │  LABELING AGENT                                          │
+  │                                                          │
+  │  Model: GPT-4o (ChatLiteLLM via AAW)                     │
+  │  Hosted: AAW (LangGraph)                                 │
+  │  Schedule: Monthly                                       │
+  │  Tools: vector_search_categories, training_data_rw       │
+  │                                                          │
+  │  Tasks:                                                   │
+  │    1. Audit existing labels (sample per category)         │
+  │    2. Identify mislabeled training records                │
+  │    3. Generate/update category definitions                │
+  │    4. Propose new categories from Misc clusters           │
+  │    5. Update Category Definitions KB                      │
+  │                                                          │
+  │  Output: audit report + updated KB + proposed labels      │
+  │  Cost: ~$30/run                                          │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────┐
+  │  FEEDBACK AGENT                                          │
+  │                                                          │
+  │  Model: GPT-4o (ChatLiteLLM via AAW)                     │
+  │  Hosted: AAW (LangGraph)                                 │
+  │  Trigger: On reviewer correction + monthly               │
+  │  Tools: mlflow_api, training_data_write, kb_update        │
+  │                                                          │
+  │  Tasks:                                                   │
+  │    1. Process reviewer corrections → training data        │
+  │    2. Detect correction patterns → propose new rules      │
+  │    3. Trigger XGBoost retraining via Databricks Jobs API  │
+  │       (Phase 2, Step 2.5 — runs on Databricks, not AAW)   │
+  │    4. Poll job status → confirm completion                │
+  │    5. Promote model via MLflow API if tests pass          │
+  │    6. Monthly accuracy report by category                 │
+  │    7. Drift detection                                     │
+  │    8. Cost tracking                                       │
+  │                                                          │
+  │  Output: corrections processed + retrain status           │
+  │          + accuracy report                                │
+  │  Cost: ~$10/month                                        │
+  └──────────────────────────────────────────────────────────┘
+
+
+================================================================================
+PHASE 5: HUMAN REVIEW (Reviewer Agent — Conversational UI)
+================================================================================
+
+  Architecture:
+    UI / Dashboard  ←→  FastAPI Backend  ←→  Reviewer Agent (AAW/LangGraph)
+                                         ←→  Databricks (Delta tables)
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  REVIEWER AGENT                                                  │
+  │                                                                  │
+  │  Model: GPT-4o (ChatLiteLLM via AAW)                             │
+  │  Pattern: ReAct (tool-calling, conversational)                   │
+  │  Memory: Per-reviewer session via LangGraph checkpoints          │
+  │  Hosted: AAW (LangGraph HTTP endpoint)                           │
+  │                                                                  │
+  │  The Reviewer Agent is the SINGLE interface for reviewers.       │
+  │  It replaces the static review queue with a conversational       │
+  │  agent that can query, validate, correct, and update on behalf   │
+  │  of the reviewer via natural language.                           │
+  │                                                                  │
+  │  Tools available to the Reviewer Agent:                          │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │  QUERY & INSPECT                                          │  │
+  │  │    query_invoices      → filter/search output table        │  │
+  │  │    get_invoice_detail  → full agent trace + write-up       │  │
+  │  │    get_accuracy_report → Feedback Agent monthly stats      │  │
+  │  │                                                            │  │
+  │  │  VALIDATE & CORRECT                                        │  │
+  │  │    approve_invoice     → mark record as reviewer-approved  │  │
+  │  │    correct_category    → update + trigger Feedback Agent   │  │
+  │  │    correct_taxability  → update + trigger Feedback Agent   │  │
+  │  │    flag_for_legal      → escalation flag                   │  │
+  │  │                                                            │  │
+  │  │  UPDATE RULES & LABELS                                     │  │
+  │  │    add_rule            → insert into Rules KB              │  │
+  │  │    update_rule         → modify existing rule in Rules KB  │  │
+  │  │    update_label        → write to training data table      │  │
+  │  │                                                            │  │
+  │  │  RE-PROCESS                                                │  │
+  │  │    reclassify_invoice  → triggers Databricks Jobs API      │  │
+  │  │                          to re-run Phase 3 notebook on     │  │
+  │  │                          a single record                   │  │
+  │  └────────────────────────────────────────────────────────────┘  │
+  │                                                                  │
+  │  Connection to backend systems:                                  │
+  │    ├── Databricks Jobs API (trigger single-record re-run via notebook) │
+  │    ├── Feedback Agent AAW endpoint (triggered on corrections)          │
+  │    ├── Databricks Delta tables (read/write via SQL connector)          │
+  │    └── Databricks Vector Search (Rules KB updates)                     │
+  │                                                                  │
+  └──────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  REVIEW QUEUE (populated by Phase 3, surfaced by Reviewer Agent) │
+  │                                                                  │
+  │  Source: Records where review_priority = HIGH | CRITICAL          │
+  │  Sorted by: QA anomaly_score (highest first)                     │
+  │                                                                  │
+  │  Reviewer sees (via Reviewer Agent):                              │
+  │    - Invoice details                                              │
+  │    - Agent classification + confidence                            │
+  │    - Tax Writer justification                                     │
+  │    - QA anomaly flags                                             │
+  │    - Processing path taken                                        │
+  │    - Rules Expert reasoning (if rule applied)                     │
+  │    - Classifier results (XGBoost vs Gemma)                        │
+  │                                                                  │
+  │  Reviewer actions (via natural language to Reviewer Agent):       │
+  │    - "Approve this invoice"                                       │
+  │    - "Change category to Software License"                        │
+  │    - "This should be Exempt — correct the taxability"             │
+  │    - "Add a new rule: if extc=ELEC and mic=TRANS, classify as     │
+  │       Transformer Equipment"                                      │
+  │    - "Re-classify invoice INV-042"                                │
+  │    - "Flag this for legal review"                                 │
+  │    - "Show me the accuracy report for last month"                 │
+  │                                                                  │
+  │  Reviewers: Darrell, Parker, Sharon                               │
+  └──────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+INFRASTRUCTURE SUMMARY
+================================================================================
+
+  DATABRICKS (Phases 1-3 — Batch Classification Pipeline):
+    ├── Compute
+    │   ├── Standard cluster (Phase 1: ingestion)
+    │   ├── GPU cluster     (Phase 2: XGBoost training)
+    │   ├── Standard cluster (Phase 3: classification notebook)
+    │   └── Serving endpoints (always-on, auto-scaling)
+    │
+    ├── Model Serving Endpoints
+    │   ├── databricks-gte-large-en   (Embeddings — Phase 2)
+    │   └── xgboost-non-norad         (Classifier — Phase 3)
+    │
+    ├── Foundation Model APIs (used in Phase 3 via ai_query / ai_classify)
+    │   └── GPT-4o                    (LLM resolution + Tax Writer)
+    │
+    ├── Vector Search
+    │   ├── rules_kb_index             (Phase 3 Rules Expert)
+    │   ├── category_definitions_index (Phase 3 Classifier resolution)
+    │   └── tax_writeups_index         (Phase 3 Tax Writer RAG)
+    │
+    ├── Unity Catalog
+    │   ├── atims_shared (training, reference, models, staging)
+    │   ├── atims_dev    (dev outputs)
+    │   └── atims_prod   (prod outputs)
+    │
+    └── MLflow
+        ├── Experiment tracking (Phase 3 run metrics)
+        ├── Model registry (XGBoost versions)
+        └── Model promotion (staging → production)
+
+  AAW / LANGGRAPH (Phases 4-5 — UI and Periodic Agents):
+    ├── Hosted on: AAW (Ask AT&T Workflows — LangGraph platform)
+    ├── Agents: Reviewer (ReAct), Feedback, Labeling
+    ├── State: Per-reviewer session checkpoints (Reviewer Agent)
+    ├── Connections: Databricks SQL connector + Databricks Jobs API
+    └── Monitoring: LangSmith tracing
+
+  FASTAPI BACKEND:
+    ├── Receives webhook from Databricks Workflow on Phase 3 completion
+    ├── Serves review queue to UI (reads from atims_prod Delta table)
+    ├── Proxies UI requests → Reviewer Agent (AAW endpoint)
+    └── Triggers Feedback Agent (AAW endpoint) on reviewer corrections
+
+  DEV/PROD WORKFLOW:
+    ├── DEV workspace: develop, test, fine-tune, experiment
+    ├── PROD workspace: monthly pipeline, serve models, store results
+    └── Unity Catalog: shared models, training data, reference tables
+
+
+================================================================================
+MONTHLY EXECUTION TIMELINE
+================================================================================
+
+  Day 1-2:  Phase 1 — Data ingestion (Spark batch, Databricks Workflow)
+  Day 2-3:  Phase 2 — Feature engineering + XGBoost retrain (Spark GPU)
+  Day 3-4:  Phase 3 — Batch classification pipeline (Spark notebook, Databricks)
+              → Webhook fires to FastAPI on completion
+  Day 4:    Phase 5 — Review queue populated, reviewers begin
+              → FastAPI serves queue from atims_prod Delta table
+  Day 4-25: Phase 5 — Ongoing human review via Reviewer Agent (AAW/LangGraph)
+  Day 25:   Phase 4 — Feedback Agent (AAW) processes month's corrections
+              → Calls Databricks Jobs API to trigger XGBoost retrain if needed
+  Day 26:   Phase 4 — Labeling Agent (AAW) runs monthly label audit
+  Day 27:   Phase 2 — XGBoost retrained on Databricks (if triggered by Feedback)
+  Day 28:   Phase 2 — Regression tests, model promotion via MLflow if passed
+
+
+================================================================================
+ESTIMATED MONTHLY COSTS
+================================================================================
+
+  Phase 1 (Ingestion):          ~$10     (Spark cluster hours)
+  Phase 2 (Feature Eng):        ~$30     (GPU cluster for training)
+  Phase 3 (Batch pipeline):     ~$250    (Standard cluster + Foundation Model API calls)
+                                          breakdown: ~$50 cluster + ~$200 ai_query/ai_classify
+                                          vs. prior estimate of ~$700 on AAW
+  Phase 4 (Periodic agents):    ~$40     (AAW: Feedback + Labeling via GPT-4o)
+  Phase 5 (Human review):       Existing staff time (Reviewer Agent on AAW)
+
+  TOTAL INFRASTRUCTURE:         ~$330/month
+
+  vs. ORIGINAL AAW-ONLY DESIGN: ~$800/month
+  SAVINGS VS ORIGINAL:          ~$470/month (~59% reduction)
+
+  vs. CURRENT PIPELINE:         ~$40/month (Spark cluster only)
+  DELTA vs CURRENT:             +$290/month
+
+  VALUE:
+    - Accuracy: ~75-80% → ~92-95% (equivalent to AAW approach)
+    - Batch-level QA context: slight accuracy improvement in anomaly detection
+    - Manual review reduced by est. 60-70%
+    - Audit-ready write-ups (currently manual)
+    - Self-improving via Feedback Agent
+    - Full explainability chain per record
+    - No cross-service latency for 100K record batch
+
+
+================================================================================
+MODEL COMPARISON & SELECTION RATIONALE
+================================================================================
+
+  EMBEDDINGS:
+    Selected: databricks-gte-large-en (1024-dim)
+    Replaces: TF-IDF + PCA (NON-NORAD) and BertSentenceEmbeddings + PCA (NORAD)
+    Used in: Phase 2 (generate + store), Phase 3 (XGBoost input + Vector Search)
+    Why: Dense semantic vectors, no PCA needed, pre-deployed on Databricks
+
+  BATCH CLASSIFIER A: XGBoost
+    Endpoint: xgboost-non-norad (Databricks Model Serving)
+    Input: gte_embedding (1024-dim)
+    Called from: Phase 3 Task 3.2 (batch serving call)
+    Why: Fast, deterministic, no per-call LLM cost
+
+  BATCH CLASSIFIER B: LLM zero-shot via ai_classify()
+    Function: Databricks ai_classify() SQL function
+    Replaces: databricks-gemma-3-12b endpoint call
+    Why: Native Spark SQL, no endpoint management, billed per token
+         Equivalent zero-shot accuracy to Gemma 3 12B
+
+  LLM RESOLUTION + TAX WRITER (Phase 3):
+    Function: ai_query() SQL function → GPT-4o
+    Used for: Classifier disagreement resolution (~10-15% of unmatched)
+              Tax Writer write-up generation (all records)
+    Why: Native Databricks Foundation Model API, no cross-service calls
+
+  UI AGENTS (Phases 4-5):
+    Model: GPT-4o via ChatLiteLLM (AAW CDO proxy)
+    Used by: Reviewer Agent, Feedback Agent, Labeling Agent
+    Why: All agent models unified to GPT-4o via AAW; no Gemma/Claude/Opus
+
+  TAX REASONING AGENT: REMOVED
+    Reason: Records with no taxability matrix match are escalated directly
+    to human review (review_priority = HIGH). The added complexity and
+    LLM cost of reasoning from raw tax law was not justified.
+
+  FINE-TUNING OPTION (future consideration):
+    Candidate: Fine-tune a smaller model on labeled invoice data
+    Accuracy: ~88-93% (would allow dropping XGBoost entirely)
+    Trade-off: Requires ~1-2 weeks setup + monthly retraining
+    If pursued: Replace both ai_classify() + XGBoost with single model
+
+
+================================================================================
+IMPLEMENTATION STRUCTURE
+================================================================================
+
+  DATABRICKS (Phase 3 — Batch Classification Notebook)
+  ─────────────────────────────────────────────────────
+  Structure: Single Databricks Workflow with chained notebook tasks
+
+    Task 3.1 → rules_expert_notebook.py
+      - Spark SQL JOIN (deterministic lookup)
+      - VectorSearchClient batch search (RAG fallback)
+      - Outputs: rules_matched_df, rag_matched_df, unmatched_df
+
+    Task 3.2 → classifier_notebook.py
+      - mlflow.deployments.get_deploy_client batch predict (XGBoost)
+      - spark.sql(ai_classify(...)) (LLM zero-shot)
+      - spark.sql(ai_query(...)) (LLM resolution on disagreements)
+      - Outputs: classified_df with final_category, ensemble_confidence
+
+    Task 3.3 → tax_lookup_notebook.py
+      - Spark SQL LEFT JOIN on taxability_matrix
+      - Output: tax_result_df with taxability, tax_source
+
+    Task 3.3b → use_tax_lookup_notebook.py
+      - Spark DataFrame withColumn (pure conditional logic)
+      - Input: use_tax_amount (number), taxability
+      - Output: use_tax_df with Reverse_UseTax ('Yes'|'No'|null)
+
+    Task 3.4 → tax_writer_notebook.py
+      - VectorSearchClient batch search (Prior Write-ups RAG)
+      - spark.sql(ai_query(..., structured_prompt)) (write-up generation)
+      - Prompt includes Reverse_UseTax + use_tax_amount when applicable
+      - Output: writer_df with short_justification, full_writeup
+
+    Task 3.5 → qa_notebook.py
+      - Spark window functions (vendor consistency, amount z-score)
+      - Spark JOINs (historical_stats, state_rules)
+      - Output: qa_df with anomaly_score, review_priority
+
+    Task 3.6 → reroute_notebook.py
+      - Filter override_suggested records, iterate max 2 passes
+      - Re-invokes Tasks 3.2, 3.3, 3.3b, 3.4, 3.5 on flagged subset
+
+    Task 3.7 → write_output_notebook.py
+      - Merge all DataFrames, write to atims_prod
+      - POST webhook to FastAPI
+
+  AAW / LANGGRAPH (Phases 4-5 — Agent Code)
+  ──────────────────────────────────────────
+  Location: atims/atims_agents/agent/
+
+  LangGraph Agents:
+    - reviewer.py     — ReAct agent, per-session, conversational
+    - feedback.py     — Tool-calling agent, on correction + monthly
+    - labeling.py     — Tool-calling agent, monthly
+
+  Reviewer Agent Graph:
+    reviewer_node → tools → reviewer_node (ReAct loop) → END
+    State: per-session message history + reviewer identity
+    Checkpointing: LangGraph checkpointer (per reviewer session)
+
+  Feedback / Labeling Agents:
+    Single-pass tool-calling agents (no loop)
+    Tools call Databricks SQL connector + MLflow API + Databricks Jobs API
+
+  Connection from AAW to Databricks:
+    pip install databricks-sdk databricks-sql-connector
+    Environment variables:
+      DATABRICKS_HOST=https://your-workspace.cloud.databricks.com
+      DATABRICKS_TOKEN=dapi...
+
+
+================================================================================
+DEV/PROD CONSIDERATIONS
+================================================================================
+
+  Unity Catalog enabled: YES
+  Same model endpoints on both: YES
+
+  Resolved:
+    - Fine-tuned model portability → register in UC, deploy from either
+    - Training data sharing → UC managed tables (no more DBFS parquets)
+    - Tax matrix sharing → UC managed table
+    - KB sync → both Vector Search instances sync from same UC Delta tables
+    - Output isolation → separate catalogs (atims_dev vs atims_prod)
+
+  Remaining:
+    - Secret Scopes → set up per workspace for Palantir token and API keys
+    - Move DBFS files to UC:
+        OLD: dbfs:/FileStore/shared_uploads/.../NON_Norad_Label_data_v2.parquet
+        NEW: atims_shared.training.non_norad_labels
+        OLD: dbfs:/FileStore/shared_uploads/.../TaxMat_update.csv
+        NEW: atims_shared.reference.taxability_matrix
+
+
+================================================================================
