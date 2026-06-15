@@ -1,68 +1,51 @@
+-- =====================================================================
+-- ATIMS classification rules table — DDL
+-- Databricks / Delta. Change the catalog.schema.table name to yours.
+-- =====================================================================
 
-<!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RecruitFlow AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            colors: {
-              brand: {
-                50: '#eff6ff',
-                100: '#dbeafe',
-                500: '#3b82f6',
-                600: '#2563eb',
-                700: '#1d4ed8',
-                900: '#1e3a8a',
-              }
-            }
-          }
-        }
-      }
-    </script>
-    <style>
-      body {
-        background-color: #f8fafc;
-        scroll-padding-top: 5rem; /* Space for the sticky header */
-      }
-      /* Custom scrollbar for webkit */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8; 
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
-  }
-}
-</script>
-</head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
+-- ---------------------------------------------------------------------
+-- A) FULL CREATE TABLE (fresh deploy / reference schema)
+--    Existing 20 columns + 3 additive columns to fully support the model.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS atims_shared.reference.classification_rules (
+    rule_id               STRING    COMMENT 'Unique rule identifier (e.g., KW-001, GEN-015, PV-042)',
+    rule_type             STRING    COMMENT 'Rule type: keyword | generic | parker_volpe',
+    rule_subtype          STRING    COMMENT 'keyword_match | metadata_match | extc_only | vendor_only | vendor_extc | vendor_desc | vendor_desc_extc',
+    priority              INT       COMMENT 'Evaluation order - lower number = higher priority. Parker > Generic > Keyword.',
+    cluster               STRING    COMMENT 'Output classification category (e.g., Cable - Metallic)',
+    keyword_include       STRING    COMMENT 'Comma-separated keywords to match in description (keyword rules)',
+    keyword_exclude       STRING    COMMENT 'Comma-separated exclusion keywords (keyword rules)',
+    extc_pattern          STRING    COMMENT 'Exact value or SQL LIKE pattern for extc field (EXTC_CODE)',
+    mic_pattern           STRING    COMMENT 'Exact value or SQL LIKE pattern for mic_cln field (MIC). Comma-separated for OR logic.',
+    account_code_pattern  STRING    COMMENT 'Exact value or SQL LIKE pattern for account_code field (ACCOUNT_CODE)',
+    vendor_pattern        STRING    COMMENT 'Exact value or SQL LIKE pattern for vendor_name field (VENDOR_NAME)',
+    description_pattern   STRING    COMMENT 'SQL LIKE pattern for description field (matched vs final_description)',
+    company_code_pattern  STRING    COMMENT 'Exact value for company_code / entity_code field (COMPANY_CODE)',
+    condition_logic       STRING    COMMENT 'Full SQL-style condition string for complex rules that cannot be decomposed into individual columns',
+    rule_text             STRING    COMMENT 'Natural language description of the rule - embedded for vector search KB',
+    source                STRING    COMMENT 'Origin: keyword_sheet | generic_sheet | parker_volpe',
+    notes                 STRING    COMMENT 'Additional notes (e.g., Need some examples)',
+    is_active             BOOLEAN   COMMENT 'Enable/disable rule without deleting',
+    created_date          TIMESTAMP COMMENT 'Row created timestamp',
+    updated_date          TIMESTAMP COMMENT 'Row last-updated timestamp',
+    -- ---- additive columns (model/code support) ----
+    account_code          STRING    COMMENT 'Account code assigned for label_account_code (model target); else from cluster->account map',
+    match_target          STRING    COMMENT 'Field the text patterns run against; default final_description',
+    match_type            STRING    COMMENT 'Optional explicit operator: exact | like | contains | regex | sql (else inferred from %)'
+)
+USING DELTA
+COMMENT 'Deterministic + workbook classification rules for the AP taxability model (keyword < generic < parker_volpe).'
+TBLPROPERTIES (
+    'delta.minReaderVersion' = '2',
+    'delta.minWriterVersion' = '5'
+);
+
+
+-- ---------------------------------------------------------------------
+-- B) ALTER (your table already exists - add only the supporting columns)
+-- ---------------------------------------------------------------------
+ALTER TABLE atims_shared.reference.classification_rules ADD COLUMNS (
+    account_code   STRING   COMMENT 'Account code assigned for label_account_code (model target); else from cluster->account map',
+    match_target   STRING   COMMENT 'Field the text patterns run against; default final_description',
+    match_type     STRING   COMMENT 'Optional explicit operator: exact | like | contains | regex | sql (else inferred from %)'
+);
