@@ -1,31 +1,17 @@
-flag_cols = ["flag_vendor_inconsistent", "flag_amount_outlier", "flag_new_state_combo",
-             "flag_rule_ml_conflict", "flag_tax_sanity", "flag_batch_outlier"]
+SELECT 'prediction_ready' tbl, count(*) n FROM `31500_atims_dev`.atims_taxability.prediction_ready
+UNION ALL SELECT 't31_rules_matched', count(*) FROM `31500_atims_dev`.atims_taxability.t31_rules_matched
+UNION ALL SELECT 't31_rag_matched',   count(*) FROM `31500_atims_dev`.atims_taxability.t31_rag_matched
+UNION ALL SELECT 't31_unmatched',     count(*) FROM `31500_atims_dev`.atims_taxability.t31_unmatched
+UNION ALL SELECT 't32_classified',    count(*) FROM `31500_atims_dev`.atims_taxability.t32_classified
+UNION ALL SELECT 't33_tax_lookup',    count(*) FROM `31500_atims_dev`.atims_taxability.t33_tax_lookup
+UNION ALL SELECT 't33b_use_tax',      count(*) FROM `31500_atims_dev`.atims_taxability.t33b_use_tax
+UNION ALL SELECT 't34_tax_writer',    count(*) FROM `31500_atims_dev`.atims_taxability.t34_tax_writer
+UNION ALL SELECT 't35_qa',            count(*) FROM `31500_atims_dev`.atims_taxability.t35_qa
+UNION ALL SELECT 't36_reroute',       count(*) FROM `31500_atims_dev`.atims_taxability.t36_reroute
+UNION ALL SELECT 'non_norad_predictions', count(*) FROM `31500_atims_dev`.atims_taxability.non_norad_predictions
+ORDER BY 1;
 
-# Treat null flags as False so missing reference tables don't poison the score.
-for c in flag_cols:
-    df = df.withColumn(c, F.coalesce(col(c), lit(False)))
 
-score_expr = sum(when(col(c), 1).otherwise(0) for c in flag_cols) / lit(float(len(flag_cols)))
-df = (df
-      .withColumn("anomaly_score", score_expr)
-      .withColumn("anomalies",
-                  array_compact(array(*[when(col(c), lit(c)) for c in flag_cols])))
-      .withColumn("review_priority",
-                  when(col("taxability").isNull(), lit("HIGH"))
-                  .when(col("anomaly_score") >= 0.5,  lit("CRITICAL"))
-                  .when(col("anomaly_score") >= 0.33, lit("HIGH"))
-                  .when(col("anomaly_score") > 0,     lit("MED"))
-                  .otherwise(lit("LOW")))
-      # Only ML rows are eligible for re-classification (AUDIT B7).
-      .withColumn("override_suggested",
-                  (col("anomaly_score") >= 0.33) & (col("match_type") == "ml"))
-      .withColumn("recommendation", lit(None).cast("string")))
-
-out = df.drop("_vendor_cat_freq", "_vendor_total", "_vendor_cat_ratio",
-              "_amt_mean", "_amt_std")
-
-write_stage(out, STAGE["qa"])
-print("[3.5] review_priority distribution:")
-out.groupBy("review_priority").count().show()
-dbutils.notebook.exit("3.5 OK")
-A column, variable, or function parameter with name `vendor_id` cannot be resolved. Did you mean one of the following? [`vendor_name`, `invoice_id`, `rule_id`, `amount`, `extc`]. SQLSTATE: 42703
+SELECT date_format(to_date(ACCOUNTING_DATE),'yyyy-MM') m, count(*)
+FROM `31500_atims_dev`.atims_taxability.prediction_ready
+GROUP BY 1 ORDER BY 1;
