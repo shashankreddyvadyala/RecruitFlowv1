@@ -1,7 +1,9 @@
-df.createOrReplaceTempView("unmatched_temp")
-df = spark.sql(f"""
-    SELECT *,
-           ai_classify(final_description, {label_arr}) AS llm_pred
-    FROM unmatched_temp
-""")
-[AI_FUNCTION_COMPILATION_ERROR] An error occurred while compiling the AI function: INVALID_ARGUMENT: Must provide no more than 20 unique labels. SQLSTATE: 42883; line 3 pos 11
+write_stage(classified, STAGE["classified"])
+n_resolve = classified.filter(col("ensemble_confidence") == "RESOLVE").count()
+print(f"[3.2] classified: {classified.count():,}  GPT-4o resolved: {n_resolve:,}")
+dbutils.notebook.exit("3.2 OK")
+An exception was thrown from the Python worker. Please see the stack trace below.
+[PYTHON_EXCEPTION] An exception was thrown from the Python worker: Traceback (most recent call last):
+  File <command-5216493649940529>, line 7, in _score_partition
+ModuleNotFoundError: No module named 'mlflow'
+ SQLSTATE: 38000
