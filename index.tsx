@@ -1,51 +1,16 @@
-m	count(*)
-null	1
-2012-05	4
-2012-11	5
-2013-05	1
-2014-03	2
-2015-09	3
-2016-02	1
-2016-03	3
-2016-06	8
-2022-08	1
-2022-11	15
-2022-12	4688
-2023-01	1697848
-2023-02	2222407
-2023-03	2661193
-2023-04	2372078
-2023-05	2483148
-2023-06	2315242
-2023-07	2274783
-2023-08	2587824
-2023-09	2434530
-2023-10	2606943
-2023-11	2265412
-2023-12	2169056
-2024-01	2375606
-2024-02	2139710
-2024-03	2099801
-2024-04	2125252
-2024-05	2267727
-2024-06	2058790
-2024-07	2268424
-2024-08	254955
-2024-09	98331
-2024-10	107735
-2024-11	83059
-2024-12	119892
-2025-01	92519
-2025-02	66645
-2025-03	78114
-2025-04	70269
-2025-05	84550
-2025-06	64582
-2025-07	73064
-2025-08	59342
-2025-09	69347
-2025-10	71497
-2025-11	55655
-2025-12	65102
-2026-01	59611
-2026-02	366
+sqlSELECT date_format(to_date(ACCOUNTING_DATE),'yyyy-MM') m, count(*)
+FROM `31500_atims_dev`.atims_taxability.prediction_ready
+GROUP BY 1 ORDER BY 1;
+
+SELECT 'prediction_ready' tbl, count(*) n FROM `31500_atims_dev`.atims_taxability.prediction_ready
+UNION ALL SELECT 't31_rules_matched', count(*) FROM `31500_atims_dev`.atims_taxability.t31_rules_matched
+UNION ALL SELECT 't31_rag_matched',   count(*) FROM `31500_atims_dev`.atims_taxability.t31_rag_matched
+UNION ALL SELECT 't31_unmatched',     count(*) FROM `31500_atims_dev`.atims_taxability.t31_unmatched
+UNION ALL SELECT 't32_classified',    count(*) FROM `31500_atims_dev`.atims_taxability.t32_classified
+UNION ALL SELECT 't33_tax_lookup',    count(*) FROM `31500_atims_dev`.atims_taxability.t33_tax_lookup
+UNION ALL SELECT 't33b_use_tax',      count(*) FROM `31500_atims_dev`.atims_taxability.t33b_use_tax
+UNION ALL SELECT 't34_tax_writer',    count(*) FROM `31500_atims_dev`.atims_taxability.t34_tax_writer
+UNION ALL SELECT 't35_qa',            count(*) FROM `31500_atims_dev`.atims_taxability.t35_qa
+UNION ALL SELECT 't36_reroute',       count(*) FROM `31500_atims_dev`.atims_taxability.t36_reroute
+UNION ALL SELECT 'non_norad_predictions', count(*) FROM `31500_atims_dev`.atims_taxability.non_norad_predictions
+ORDER BY 1;
