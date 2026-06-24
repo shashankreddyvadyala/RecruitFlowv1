@@ -1,12 +1,5 @@
-tbl	n
-non_norad_predictions	0
-prediction_ready	45005141
-t31_rag_matched	0
-t31_rules_matched	0
-t31_unmatched	0
-t32_classified	0
-t33_tax_lookup	0
-t33b_use_tax	0
-t34_tax_writer	0
-t35_qa	0
-t36_reroute	0
+SELECT count(*) FROM `31500_atims_dev`.atims_taxability.prediction_ready
+WHERE date_format(accounting_date,'yyyy-MM')='2022-12';            -- what 3.1 does now
+
+SELECT count(*) FROM `31500_atims_dev`.atims_taxability.prediction_ready
+WHERE date_format(to_date(accounting_date),'yyyy-MM')='2022-12';   -- with to_date
