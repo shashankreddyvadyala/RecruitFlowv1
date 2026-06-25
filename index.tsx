@@ -1,62 +1,20 @@
-no month widget yet: An error occurred while calling GetArgument.
-: com.databricks.dbutils_v1.InputWidgetNotDefined: No input widget named month is defined
-	at com.databricks.backend.daemon.driver.NotebookArguments.checkExists(NotebookArguments.scala:79)
-	at com.databricks.backend.daemon.driver.NotebookArguments.getArgument(NotebookArguments.scala:265)
-	at com.databricks.backend.daemon.driver.PythonDriverLocalBase$PythonDriverLocalGrpcInterfaceImpl.getArgument(PythonDriverLocalBase.scala:1181)
-	at com.databricks.backend.daemon.repl.WidgetsService.$anonfun$getArgument$2(WidgetsService.scala:107)
-	at com.databricks.backend.daemon.repl.WidgetsService.withWidgetUserErrorHandling(WidgetsService.scala:24)
-	at com.databricks.backend.daemon.repl.WidgetsService.$anonfun$getArgument$1(WidgetsService.scala:104)
-	at com.databricks.backend.daemon.repl.NotebookGrpcServiceBase.handleRequestSync(NotebookGrpcUtils.scala:118)
-	at com.databricks.backend.daemon.repl.NotebookGrpcServiceBase.handleRequestSync$(NotebookGrpcUtils.scala:116)
-	at com.databricks.backend.daemon.repl.WidgetsService.handleRequestSync(WidgetsService.scala:14)
-	at com.databricks.backend.daemon.repl.WidgetsService.getArgument(WidgetsService.scala:104)
-	at com.databricks.notebook.widgets.WidgetsServiceGrpc$$anon$5.invoke(WidgetsServiceGrpc.scala:295)
-	at com.databricks.notebook.widgets.WidgetsServiceGrpc$$anon$5.invoke(WidgetsServiceGrpc.scala:293)
-	at grpc_shaded.io.grpc.stub.ServerCalls$UnaryServerCallHandler$UnaryServerCallListener.onHalfClose(ServerCalls.java:182)
-	at grpc_shaded.io.grpc.PartialForwardingServerCallListener.onHalfClose(PartialForwardingServerCallListener.java:35)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:23)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:40)
-	at grpc_shaded.io.grpc.Contexts$ContextualizedServerCallListener.onHalfClose(Contexts.java:86)
-	at grpc_shaded.io.grpc.PartialForwardingServerCallListener.onHalfClose(PartialForwardingServerCallListener.java:35)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:23)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:40)
-	at grpc_shaded.io.grpc.PartialForwardingServerCallListener.onHalfClose(PartialForwardingServerCallListener.java:35)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:23)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:40)
-	at grpc_shaded.io.grpc.PartialForwardingServerCallListener.onHalfClose(PartialForwardingServerCallListener.java:35)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:23)
-	at grpc_shaded.io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener.onHalfClose(ForwardingServerCallListener.java:40)
-	at grpc_shaded.io.grpc.Contexts$ContextualizedServerCallListener.onHalfClose(Contexts.java:86)
-	at grpc_shaded.com.linecorp.armeria.internal.server.grpc.AbstractServerCall.invokeOnMessage(AbstractServerCall.java:399)
-	at grpc_shaded.com.linecorp.armeria.internal.server.grpc.AbstractServerCall.lambda$onRequestMessage$2(AbstractServerCall.java:363)
-	at grpc_shaded.com.linecorp.armeria.internal.shaded.guava.util.concurrent.SequentialExecutor$1.run(SequentialExecutor.java:126)
-	at grpc_shaded.com.linecorp.armeria.internal.shaded.guava.util.concurrent.SequentialExecutor$QueueWorker.workOnQueue(SequentialExecutor.java:240)
-	at grpc_shaded.com.linecorp.armeria.internal.shaded.guava.util.concurrent.SequentialExecutor$QueueWorker.run(SequentialExecutor.java:184)
-	at grpc_shaded.com.linecorp.armeria.common.DefaultContextAwareRunnable.run(DefaultContextAwareRunnable.java:45)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$2(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.logging.AttributionContextTracing.$anonfun$withAttributionContext$1(AttributionContextTracing.scala:146)
-	at com.databricks.logging.AttributionContext$.$anonfun$withValue$1(AttributionContext.scala:349)
-	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:59)
-	at com.databricks.logging.AttributionContext$.withValue(AttributionContext.scala:345)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext(AttributionContextTracing.scala:144)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext$(AttributionContextTracing.scala:141)
-	at com.databricks.threading.ContextBoundRunnable.withAttributionContext(ContextBoundRunnable.scala:7)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$1(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.context.integrity.IntegrityCheckContext$ThreadLocalStorage$.withValue(IntegrityCheckContext.scala:104)
-	at com.databricks.threading.ContextBoundRunnable.run(ContextBoundRunnable.scala:15)
-	at grpc_shaded.com.google.common.util.concurrent.SequentialExecutor$1.run(SequentialExecutor.java:126)
-	at grpc_shaded.com.google.common.util.concurrent.SequentialExecutor$QueueWorker.workOnQueue(SequentialExecutor.java:240)
-	at grpc_shaded.com.google.common.util.concurrent.SequentialExecutor$QueueWorker.run(SequentialExecutor.java:184)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$2(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.logging.AttributionContextTracing.$anonfun$withAttributionContext$1(AttributionContextTracing.scala:146)
-	at com.databricks.logging.AttributionContext$.$anonfun$withValue$1(AttributionContext.scala:349)
-	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:59)
-	at com.databricks.logging.AttributionContext$.withValue(AttributionContext.scala:345)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext(AttributionContextTracing.scala:144)
-	at 
-... (truncated)
-total rows       = 45005141
-rows for 2022-12 = 4688
+SELECT 't35_qa' tbl, count(*) n FROM `31500_atims_dev`.atims_taxability.t35_qa
+UNION ALL SELECT 't36_reroute', count(*) FROM `31500_atims_dev`.atims_taxability.t36_reroute
+UNION ALL SELECT 'non_norad_predictions', count(*) FROM `31500_atims_dev`.atims_taxability.non_norad_predictions
+ORDER BY 1;
+
+SELECT match_type, count(*) n
+FROM `31500_atims_dev`.atims_taxability.non_norad_predictions
+GROUP BY match_type ORDER BY n DESC;
+
+
+SELECT review_priority, count(*) n
+FROM `31500_atims_dev`.atims_taxability.non_norad_predictions
+GROUP BY review_priority ORDER BY 1;
+
+
+SELECT invoice_id, vendor_name, state, final_category, match_type,
+       taxability, Reverse_UseTax, review_priority, audit_ready
+FROM `31500_atims_dev`.atims_taxability.non_norad_predictions
+LIMIT 15;
+
