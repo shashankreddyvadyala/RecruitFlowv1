@@ -1,55 +1,9 @@
->> 3.1  Rules Expert  (rules_expert_notebook) ...
-   [FAILED] 3.1  Rules Expert (rules_expert_notebook): An error occurred while calling NotebookRun.
-: com.databricks.WorkflowException: com.databricks.NotebookExecutionException: FAILED: Workload failed, see run output for details
-	at com.databricks.workflow.WorkflowDriver.run(WorkflowDriver.scala:98)
-	at com.databricks.dbutils_v1.impl.NotebookUtilsImpl.run(NotebookUtilsImpl.scala:138)
-	at com.databricks.backend.daemon.driver.PythonDriverLocalBase$PythonDriverLocalGrpcInterfaceImpl.notebookRun(PythonDriverLocalBase.scala:1272)
-	at com.databricks.backend.daemon.repl.ExecutionLifecycleService.$anonfun$notebookRun$3(ExecutionLifecycleService.scala:198)
-	at com.databricks.backend.daemon.repl.ExecutionLifecycleService.translateUserErrors(ExecutionLifecycleService.scala:51)
-	at com.databricks.backend.daemon.repl.ExecutionLifecycleService.$anonfun$notebookRun$2(ExecutionLifecycleService.scala:194)
-	at com.databricks.backend.daemon.repl.NotebookGrpcServiceBase.$anonfun$handleRequestAsyncWithThreadLocal$1(NotebookGrpcUtils.scala:199)
-	at scala.concurrent.Future$.$anonfun$apply$1(Future.scala:687)
-	at scala.concurrent.impl.Promise$Transformation.run(Promise.scala:467)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$2(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.logging.AttributionContextTracing.$anonfun$withAttributionContext$1(AttributionContextTracing.scala:146)
-	at com.databricks.logging.AttributionContext$.$anonfun$withValue$1(AttributionContext.scala:349)
-	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:59)
-	at com.databricks.logging.AttributionContext$.withValue(AttributionContext.scala:345)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext(AttributionContextTracing.scala:144)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext$(AttributionContextTracing.scala:141)
-	at com.databricks.threading.ContextBoundRunnable.withAttributionContext(ContextBoundRunnable.scala:7)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$1(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.context.integrity.IntegrityCheckContext$ThreadLocalStorage$.withValue(IntegrityCheckContext.scala:108)
-	at com.databricks.threading.ContextBoundRunnable.run(ContextBoundRunnable.scala:15)
-	at com.databricks.threading.DatabricksExecutionContext$InstrumentedRunnable.run(DatabricksExecutionContext.scala:36)
-	at com.databricks.threading.NamedExecutor$$anon$4.run(NamedExecutor.scala:1009)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$2(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.logging.AttributionContextTracing.$anonfun$withAttributionContext$1(AttributionContextTracing.scala:146)
-	at com.databricks.logging.AttributionContext$.$anonfun$withValue$1(AttributionContext.scala:349)
-	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:59)
-	at com.databricks.logging.AttributionContext$.withValue(AttributionContext.scala:345)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext(AttributionContextTracing.scala:144)
-	at com.databricks.logging.AttributionContextTracing.withAttributionContext$(AttributionContextTracing.scala:141)
-	at com.databricks.threading.ContextBoundRunnable.withAttributionContext(ContextBoundRunnable.scala:7)
-	at com.databricks.threading.ContextBoundRunnable.$anonfun$run$1(ContextBoundRunnable.scala:16)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.context.integrity.IntegrityCheckContext$ThreadLocalStorage$.withValue(IntegrityCheckContext.scala:108)
-	at com.databricks.threading.ContextBoundRunnable.run(ContextBoundRunnable.scala:15)
-	at com.databricks.threading.InstrumentedExecutorService.$anonfun$makeContextAware$2(InstrumentedExecutorService.scala:257)
-	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.scala:18)
-	at com.databricks.threading.InstrumentedExecutorService.$anonfun$instrumentationWrapper$1(InstrumentedExecutorService.scala:299)
-	at com.databricks.instrumentation.QueuedThreadPoolInstrumenter.trackActiveThreads(QueuedThreadPoolInstrumenter.scala:139)
-	at com.databricks.instrumentation.QueuedThreadPoolInstrumenter.trackActiveThreads$(QueuedThreadPoolInstrumenter.scala:136)
-	at com.databricks.threading.InstrumentedExecutorService.trackActiveThreads(InstrumentedExecutorService.scala:72)
-	at com.databricks.threading.InstrumentedExecutorService.instrumentationWrapper(InstrumentedExecutorService.scala:287)
-	at com.databricks.threading.InstrumentedExecutorService.$anonfun$makeContextAware$1(InstrumentedExecutorService.scala:259)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-	at java.base/java.lang.Thread.run(Thread.java:840)
-Caused by: com.databricks.NotebookExecutionException: FAILED: Workload failed, see run output for details
-	at com.databricks.workflow.WorkflowDriver.run0(WorkflowDriver.scala:146)
-	at com.databricks.workflow.WorkflowDriver.run(WorkflowDriver.scala:93)
-	... 47 more
+
+Last execution failed
+3
+3
+123456789101112131415161718192021222324
+
+[3.1] records=0  active rules=142
+ValueError: [3.1] ZERO rows in prediction_ready for MONTH='2026-05'. Months present in the table: [None, '2012-05', '2012-11', '2013-05', '2014-03', '2015-09', '2016-02', '2016-03', '2016-06', '2022-08', '2022-11', '2022-12', '2023-01', '2023-02', '2023-03', '2023-04', '2023-05', '2023-06', '2023-07', '2023-08', '2023-09', '2023-10', '2023-11', '2023-12', '2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06', '2024-07', '2024-08', '2024-09', '2024-10', '2024-11', '2024-12', '2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02']. Set MONTH in config_notebook to one of these and re-run.
+[Trace ID: 00-ea09106b7125975ec635c3d51a5b1ff3-e95630bce9bca21f-00]
