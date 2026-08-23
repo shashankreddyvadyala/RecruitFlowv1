@@ -1,0 +1,56 @@
+rule_id,source_rule,match_expression
+GEN-003,extc =520 and mic = COE1K or mic = COEOTHER,extc = 520 AND mic_cln = COE1K OR mic_cln = COEOTHER
+GEN-004,mic = COE10K or mic = CHROR1K,mic_cln = COE10K OR mic_cln = CHROR1K
+GEN-005,mic = CPEMIS or mic = CPERTR,mic_cln = CPEMIS OR mic_cln = CPERTR
+GEN-007,account_code = 399C  AND  extc = 61J,account_code = 399C AND extc = 61J
+GEN-008,mic = COEOTHER AND ectc = 450,mic_cln = COEOTHER AND extc = 450
+GEN-009,mic= CPEMIS and extc= 48C,mic_cln = CPEMIS AND extc = 48C
+GEN-010,mic = COEOTHER AND ectc = 460,mic_cln = COEOTHER AND extc = 460
+GEN-011,account_code =  6124.570M  AND extc = 6A9,account_code = 6124.570M AND extc = 6A9
+GEN-012,account_code = 1220.121 or account_code = 1220.147,account_code = 1220.121 OR account_code = 1220.147
+GEN-013,account_code  like  4010% AND  final_description not like freight charges,account_code LIKE 4010% AND final_description NOT LIKE %freight charges%
+GEN-015,mic  = like(FBR%) AND mic = like(%K),null
+GEN-016,mic = like(SEQ%),mic_cln LIKE SEQ%
+GEN-017,mic = like(NEQ%),mic_cln LIKE NEQ%
+GEN-018,mic = like(TOWER%),mic_cln LIKE TOWER%
+GEN-019,"mic = like(ANT%) AND mic = like(""%K"")",mic_cln LIKE ANT% AND mic_cln LIKE %K
+GEN-020,mic = like(EFI%) AND extc = 450,mic_cln LIKE EFI% AND extc = 450
+GEN-021,mic = like(CEQ%),mic_cln LIKE CEQ%
+GEN-022,"extc = 450 AND account_code = ""2003.85C""",extc = 450 AND account_code = 2003.85C
+GEN-023,"extc = 460 AND account_code = ""2003.85C""",extc = 460 AND account_code = 2003.85C
+GEN-024,extc = 894%,extc LIKE 894%
+GEN-025,account_code = 1130%,account_code LIKE 1130%
+GEN-026,vendor_name = IRON MOUNTAIN,vendor_name = IRON MOUNTAIN
+GEN-027,"description = %landscape% AND account_code = 6121.235 AND company_code =""SS00""",final_description LIKE %landscape% AND account_code = 6121.235 AND company_code = SS00
+GEN-028,description = landscape gravel% AND company_code = TTOO,final_description LIKE landscape gravel% AND company_code = TTOO
+GEN-029,description = base Service% AND  account_code = 6123.91,final_description LIKE base Service% AND account_code = 6123.91
+GEN-030,description = fiber AND  account_code = 6114.1,final_description = fiber AND account_code = 6114.1
+GEN-031,description = %ceeot% AND extc = 455,final_description LIKE %ceeot% AND extc = 455
+GEN-032,description = %ceeot% AND extc = 465,final_description LIKE %ceeot% AND extc = 465
+GEN-033,description = %ceeot% AND extc = 520,final_description LIKE %ceeot% AND extc = 520
+GEN-034,vendor_name = DIVERSIFIED WIRE & CABLE INC,vendor_name = DIVERSIFIED WIRE & CABLE INC
+GEN-035,vendor_name = CISCO SYSTEMS CAPITAL CORP>9I,vendor_name = CISCO SYSTEMS CAPITAL CORP>9I
+GEN-036,vendor_name = TEKSYSTEMS INC>9M,vendor_name = TEKSYSTEMS INC>9M
+GEN-037,= HIGHTOWERS PETROLEUM CO,null
+GEN-038,vendor_name = JK COMMUNICATIONS & CONSTRUCTION>9L,vendor_name = JK COMMUNICATIONS & CONSTRUCTION>9L
+GEN-039,vendor_name = AMERICAN SAFETY UTILITY CORP>9B,vendor_name = AMERICAN SAFETY UTILITY CORP>9B
+GEN-040,vendor_name = IMAGE SOLUTIONS APPAREL INC,vendor_name = IMAGE SOLUTIONS APPAREL INC
+GEN-041,vendor_name = SAF T GARD INTERNATIONAL INC,vendor_name = SAF T GARD INTERNATIONAL INC
+GEN-042,vendor_name = SOUTHLAND ENTERPRISES>2,vendor_name = SOUTHLAND ENTERPRISES>2
+GEN-043,vendor_name = STANLEY CONVERGENT,vendor_name = STANLEY CONVERGENT
+GEN-044,company_code = 7M39,company_code = 7M39
+GEN-045,vendor_name = CANTEEN ONE%,vendor_name LIKE CANTEEN ONE%
+GEN-046,vendor_name = ARAMARK REFRESHMENT SERVICES%,vendor_name LIKE ARAMARK REFRESHMENT SERVICES%
+GEN-048,account_code= 6114.1 and description contains insulated gloves,account_code = 6114.1 AND final_description LIKE %insulated gloves%
+GEN-049,extc= 520 and account_code is %M,extc = 520 AND account_code LIKE %M
+PV-002,AMERICAN SAFETY UTILITY CORP>9B,vendor_name = AMERICAN SAFETY UTILITY CORP AND extc = 9B
+PV-003,ALLIED UNIVERSAL>9I,vendor_name = ALLIED UNIVERSAL AND extc = 9I
+PV-007,LINCOLN CONTROLS INC>1,vendor_name = LINCOLN CONTROLS INC AND extc = 1
+PV-008,LOOMIS FARGO & CO>9M,vendor_name = LOOMIS FARGO & CO AND extc = 9M
+PV-011,THE MORNING CONSULT LLC>9I,vendor_name = THE MORNING CONSULT LLC AND extc = 9I
+PV-019,VMWARE INC>9I,vendor_name = VMWARE INC AND extc = 9I
+PV-021,SAIA LOGISTICS SERVICES LLC>9I,vendor_name = SAIA LOGISTICS SERVICES LLC AND extc = 9I
+PV-031,MATRIX RESOURCES INC>9I,vendor_name = MATRIX RESOURCES INC AND extc = 9I
+PV-034,SIENA ENGINEERING GROUP INC>9L,vendor_name = SIENA ENGINEERING GROUP INC AND extc = 9L
+PV-035,PARALLEL TOWERS III LLC>1,vendor_name = PARALLEL TOWERS III LLC AND extc = 1
+PV-036,PARALLEL TOWERS III LLC>1,vendor_name = PARALLEL TOWERS III LLC AND extc = 1
