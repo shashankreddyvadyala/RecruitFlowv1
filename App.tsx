@@ -1,3 +1,9 @@
+SELECT current_catalog(), current_schema();
+SHOW CATALOGS;
+SHOW SCHEMAS IN `31500_atims_dev`;
+SHOW TABLES IN `31500_atims_dev`.`atims_taxability` LIKE 't32*';
+
+
 Py4JJavaError: An error occurred while calling NotebookRun.
 : com.databricks.WorkflowException: com.databricks.NotebookExecutionException: FAILED: Workload failed, see run output for details
 	at com.databricks.workflow.WorkflowDriver.run(WorkflowDriver.scala:98)
