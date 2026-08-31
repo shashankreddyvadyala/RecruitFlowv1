@@ -1,1 +1,1 @@
-df = spark.read.format("delta").load("abfss://atims@nprdatimsstore.dfs.core.windows.net/TAXABILITY_DATA/ML_INPUT")
+[NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE is not supported on serverless compute. SQLSTATE: 0A000
