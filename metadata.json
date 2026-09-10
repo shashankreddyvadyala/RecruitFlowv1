@@ -1,1 +1,15 @@
-
+CREATE OR REPLACE VIEW `36383_fintransformation_dev`.`finance_consulting_spend`.`svc_cat_input` AS
+SELECT
+  UPPER(DATE_FORMAT(INVOICE_CREATION_DATE, 'MMM-yy'))              AS MONTH,
+  UPPER(TRIM(REGEXP_REPLACE(COALESCE(ORGANIZATION_NAME, 'UNKNOWN'),
+                            '>.*$', '')))                          AS VENDOR_NORMALIZED,
+  EXTC_DESCRIPTION,
+  INVOICE_DIST_AMOUNT                                              AS SPEND_USD,
+  AID_TAXONOMY_LEVEL1,
+  AID_TAXONOMY_LEVEL2,
+  INVOICE_NUM,
+  INVOICE_CREATION_DATE,
+  INVOICE_ACCOUNTING_DATE,
+  INVOICE_APPROVER_NAME,
+  OFFICER3, OFFICER4, OFFICER5
+FROM `36383_fintransformation_dev`.`finance_consulting_spend`.`spend_data_from_2024`;
