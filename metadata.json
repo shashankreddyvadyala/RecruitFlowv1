@@ -1,10 +1,1 @@
-Widget	Value
-catalog	36383_fintransformation_dev
-schema	finance_consulting_spend
-input_table	svc_cat_input
-bootstrap_table	csr_jun_jul_reviewed
-run_mode	both
 
-run_mode is already both by default, so in practice you're typing into four text boxes.
-
-Leave every other widget untouched: llm_available false, run_month blank, chunk_rows 2000000, overwrite_month true, sequential_learning false, and the six table-name widgets at their svc_cat_* defaults — those are outputs the notebook creates.
