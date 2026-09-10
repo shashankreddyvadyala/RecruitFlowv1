@@ -1,1 +1,16 @@
 
+col_name	data_type
+EXTC_DESCRIPTION	string
+INVOICE_CREATION_DATE	timestamp
+INVOICE_ACCOUNTING_DATE	timestamp
+INVOICE_DIST_AMOUNT	double
+ORGANIZATION_NAME	string
+OFFICER3	string
+OFFICER4	string
+OFFICER5	string
+INVOICE_NUM	string
+AGREEMENT_TERMS	string
+INVOICE_APPROVER_NAME	string
+AID_TAXONOMY_LEVEL1	string
+AID_TAXONOMY_LEVEL2	string
+_rescued_data	string
