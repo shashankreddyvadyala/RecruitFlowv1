@@ -1,1 +1,5 @@
+SELECT * FROM `36383_fintransformation_dev`.`finance_consulting_spend`.`svc_cat_run_summary`
+ORDER BY MONTH;
 
+SELECT * FROM `36383_fintransformation_dev`.`finance_consulting_spend`.`svc_cat_tier_accuracy`
+WHERE SCOPE = 'overall';
