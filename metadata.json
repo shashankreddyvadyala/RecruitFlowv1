@@ -1,1 +1,4 @@
 
+SELECT MONTH, COUNT(*) lines, COUNT(DISTINCT VENDOR_NORMALIZED) vendors, ROUND(SUM(SPEND_USD)) spend
+FROM `36383_fintransformation_dev`.`finance_consulting_spend`.`svc_cat_input`
+GROUP BY MONTH ORDER BY MONTH;
