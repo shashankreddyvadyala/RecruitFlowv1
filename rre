@@ -1,0 +1,12 @@
+The following are the points from Ralf:
+ Web Report Format: Duplicate the report as per attached Spend report
+Normalize suppliers to UVID for reporting purposes only. Not for data file.  - We can keep the non-normalized vendor names.
+There are currently over 2,100 suppliers as per the source report. Recommend a reasonable cutoff threshold/filter for the Web Report such as $100,000 annual supplier spend. - a filter can be added after grouping against the suppliers in the input itself.
+Other supplier category is very high $100M plus for 2025. Ralf will provide guidance for reassignment is separate email. - Ralf feedback is awaited.
+Remove any transactions for Supplier Name “Check for Deposit Only” - a filter can be added against the suppliers in the input itself.
+Verify why there is no spend in the category  “Financial Consulting” - the June July feedback given by Ralf in the Action category does not include this category. Neither it is present in the predicted service category. In the older feedback given by Ralf only the following come under “Financial Consulting” - 
+KPMG LLP
+DELOITTE TOUCHE TOHMATSU LIMITED -DTTL
+DIRECT PAYMENT TO INDIVIDUAL(S)
+PRICEWATERHOUSECOOPERS LLP
+      these are only 4 in number which is the data I could gather from whatever is in my mind according to the data till now. At this point how to predict the “Financial Consulting”
